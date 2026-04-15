@@ -84,12 +84,22 @@ export default function App() {
             role: u.email === 'soparonosk37@gmail.com' ? 'admin' : 'user'
           }, { merge: true });
         } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, `users/${u.uid}`);
+          // Log error but don't block the app from loading
+          console.error("Error updating user profile:", e);
         }
       }
       setLoading(false);
     });
-    return unsubscribe;
+
+    // Safety timeout: if auth doesn't respond in 10s, stop loading anyway
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 10000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
