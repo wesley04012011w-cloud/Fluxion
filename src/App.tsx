@@ -162,7 +162,18 @@ export default function App() {
   }, []);
 
   const handleSendMessage = useCallback(async (text: string, images?: string[]) => {
-    if (!user || (!text.trim() && (!images || images.length === 0))) return;
+    if (!user) {
+      try {
+        await signIn();
+        return; // Stop here, user needs to send message again or we can retry automatically. 
+        // Better to just return and let them send now that they are logged in.
+      } catch (error) {
+        console.error("Login failed:", error);
+        return;
+      }
+    }
+
+    if (!text.trim() && (!images || images.length === 0)) return;
 
     let chatId = currentChatId;
     if (!chatId) {
@@ -222,10 +233,17 @@ export default function App() {
       setIsGenerating(false);
       setStreamingText('');
     }
-  }, [user, currentChatId, messages]);
+  }, [user, currentChatId, messages, apiKey]);
 
   const handleSaveScript = async (name: string, content: string) => {
-    if (!user) return;
+    if (!user) {
+      try {
+        await signIn();
+        return;
+      } catch (error) {
+        return;
+      }
+    }
     try {
       await addDoc(collection(db, 'scripts'), {
         userId: user.uid,
@@ -255,58 +273,6 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 overflow-hidden relative">
-        <div className="absolute inset-0 z-0">
-          {[...Array(50)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute bg-white rounded-full animate-pulse"
-              style={{
-                width: Math.random() * 2 + 'px',
-                height: Math.random() * 2 + 'px',
-                top: Math.random() * 100 + '%',
-                left: Math.random() * 100 + '%',
-                animationDelay: Math.random() * 5 + 's',
-                opacity: Math.random() * 0.5
-              }}
-            />
-          ))}
-        </div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="max-w-md w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 text-center relative z-10 shadow-2xl"
-        >
-          <div className="w-24 h-24 bg-black border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl overflow-hidden group">
-            <img 
-              src="/logo.png" 
-              alt="Fluxion Logo" 
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                // Fallback if logo.png doesn't exist
-                (e.target as HTMLImageElement).style.display = 'none';
-                (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="text-4xl font-black text-white">F</div>';
-              }}
-            />
-          </div>
-          <h1 className="text-4xl font-black text-white mb-2 tracking-tighter">FLUXION</h1>
-          <p className="text-gray-400 mb-8 text-sm">A inteligência definitiva para desenvolvedores Roblox.</p>
-          <button
-            onClick={signIn}
-            className="w-full py-4 bg-white hover:bg-gray-200 text-black font-black rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-xl flex items-center justify-center gap-3"
-          >
-            <UserIcon size={20} />
-            ENTRAR COM GOOGLE
-          </button>
-        </motion.div>
       </div>
     );
   }
@@ -342,7 +308,13 @@ export default function App() {
         chats={chats}
         currentChatId={currentChatId}
         setCurrentChatId={setCurrentChatId}
-        createNewChat={createNewChat}
+        createNewChat={async () => {
+          if (!user) {
+            await signIn();
+            return;
+          }
+          createNewChat();
+        }}
         deleteChat={deleteChat}
         savedScripts={savedScripts}
         deleteScript={deleteScript}
@@ -350,6 +322,7 @@ export default function App() {
         apiKey={apiKey}
         setApiKey={setApiKey}
         signOut={signOut}
+        signIn={signIn}
       />
 
       <main className="flex-1 flex flex-col relative min-w-0 z-10">

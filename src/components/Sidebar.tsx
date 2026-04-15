@@ -27,6 +27,7 @@ interface SidebarProps {
   apiKey: string;
   setApiKey: (key: string) => void;
   signOut: () => void;
+  signIn: () => void;
 }
 
 const Sidebar = React.memo(({
@@ -42,7 +43,8 @@ const Sidebar = React.memo(({
   user,
   apiKey,
   setApiKey,
-  signOut
+  signOut,
+  signIn
 }: SidebarProps) => {
   const [showApiInput, setShowApiInput] = React.useState(false);
   return (
@@ -86,31 +88,37 @@ const Sidebar = React.memo(({
                 Histórico de Chats
               </label>
             </div>
-            {chats.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => {
-                  setCurrentChatId(chat.id);
-                  if (window.innerWidth < 1024) setIsSidebarOpen(false);
-                }}
-                className={cn(
-                  "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all",
-                  currentChatId === chat.id ? "bg-white/10 text-white" : "hover:bg-white/5 text-gray-400"
-                )}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <MessageSquare size={14} className={currentChatId === chat.id ? "text-white" : ""} />
-                  <span className="truncate text-xs font-medium">{chat.title}</span>
-                </div>
-                <button
-                  onClick={(e) => deleteChat(chat.id, e)}
-                  className="p-1 hover:text-red-500 transition-all text-gray-600 hover:bg-white/5 rounded"
-                  title="Excluir Chat"
+            {!user ? (
+              <div className="px-2 py-3 text-[10px] text-gray-600 italic">Faça login para ver seu histórico.</div>
+            ) : chats.length === 0 ? (
+              <div className="px-2 py-3 text-[10px] text-gray-600 italic">Nenhum chat encontrado.</div>
+            ) : (
+              chats.map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => {
+                    setCurrentChatId(chat.id);
+                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                  }}
+                  className={cn(
+                    "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all",
+                    currentChatId === chat.id ? "bg-white/10 text-white" : "hover:bg-white/5 text-gray-400"
+                  )}
                 >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2 truncate">
+                    <MessageSquare size={14} className={currentChatId === chat.id ? "text-white" : ""} />
+                    <span className="truncate text-xs font-medium">{chat.title}</span>
+                  </div>
+                  <button
+                    onClick={(e) => deleteChat(chat.id, e)}
+                    className="p-1 hover:text-red-500 transition-all text-gray-600 hover:bg-white/5 rounded"
+                    title="Excluir Chat"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Scripts Section */}
@@ -121,7 +129,9 @@ const Sidebar = React.memo(({
                 Scripts Salvos
               </label>
             </div>
-            {savedScripts.length === 0 ? (
+            {!user ? (
+              <div className="px-2 py-3 text-[10px] text-gray-600 italic">Faça login para ver seus scripts.</div>
+            ) : savedScripts.length === 0 ? (
               <div className="px-2 py-3 text-[10px] text-gray-600 italic">Nenhum script salvo.</div>
             ) : (
               savedScripts.map((script) => (
@@ -176,13 +186,28 @@ const Sidebar = React.memo(({
             </div>
           )}
 
-          <button
-            onClick={signOut}
-            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all text-xs font-medium"
-          >
-            <LogOut size={14} />
-            <span>Sair da Conta</span>
-          </button>
+          {user ? (
+            <button
+              onClick={signOut}
+              className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-all text-xs font-medium"
+            >
+              <LogOut size={14} />
+              <span>Sair da Conta</span>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <button
+                onClick={signIn}
+                className="flex items-center gap-2 w-full p-2 rounded-lg bg-white hover:bg-gray-200 text-black font-bold transition-all text-xs"
+              >
+                <LogOut size={14} className="rotate-180" />
+                <span>ENTRAR COM GOOGLE</span>
+              </button>
+              <p className="text-[9px] text-gray-500 text-center px-2">
+                Problemas no login? <a href={window.location.href} target="_blank" rel="noopener noreferrer" className="text-white hover:underline">Abra em uma nova aba</a>.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </motion.aside>
