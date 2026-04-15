@@ -56,21 +56,6 @@ const Sidebar = React.memo(({
       )}
     >
       <div className="p-3 flex flex-col h-full w-[240px]">
-        <div className="flex items-center gap-3 mb-6 px-2">
-          <div className="w-10 h-10 bg-black border border-white/10 rounded-xl overflow-hidden flex-shrink-0">
-            <img 
-              src="https://i.imgur.com/aEWGDzh.png" 
-              alt="Fluxion Logo" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="flex flex-col">
-            <h1 className="text-sm font-black text-white tracking-tighter leading-none">FLUXION</h1>
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">AI STUDIO</span>
-          </div>
-        </div>
-
         <div className="flex items-center justify-between mb-4 lg:hidden">
           <h2 className="font-bold text-white text-sm">Menu</h2>
           <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 hover:bg-white/5 rounded-lg">
