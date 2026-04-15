@@ -29,43 +29,6 @@ import SettingsModal from './components/SettingsModal';
 import { Chat, Message, OperationType, handleFirestoreError, AppSettings, UserProfile, cn } from './types';
 import { setDoc } from 'firebase/firestore';
 
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
-  constructor(props: {children: React.ReactNode}) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 text-white">
-          <div className="max-w-md w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Ops! Algo deu errado.</h2>
-            <p className="text-gray-400 mb-6 text-sm">
-              {this.state.error?.message || "Ocorreu um erro inesperado na interface."}
-            </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-all"
-            >
-              RECARREGAR APP
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +84,7 @@ export default function App() {
             role: u.email === 'soparonosk37@gmail.com' ? 'admin' : 'user'
           }, { merge: true });
         } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, `users/${u.uid}`);
+          console.error("Error updating user profile:", e);
         }
       }
       setLoading(false);
@@ -281,14 +244,8 @@ export default function App() {
 
       setIsGenerating(false);
       setStreamingText('');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error:', error);
-      await addDoc(collection(db, `chats/${chatId}/messages`), {
-        chatId,
-        role: 'model',
-        content: `**Erro:** ${error.message || 'Falha ao gerar resposta.'}`,
-        createdAt: serverTimestamp()
-      });
       setIsGenerating(false);
       setStreamingText('');
     }
@@ -382,117 +339,115 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <motion.div 
-        initial={settings.isOptimized ? { opacity: 1 } : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: settings.isOptimized ? 0 : 1 }}
-        className={cn(
-          "flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative",
-          settings.theme === 'dark' ? "bg-black" : settings.theme === 'light' ? "bg-gray-100 text-black" : "bg-[#050505]"
-        )}
-      >
-        {/* Star Background Layer */}
-        {!settings.isOptimized && (
-          <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-            {[...Array(80)].map((_, i) => (
-              <div
-                key={i}
-                className="absolute bg-white rounded-full animate-pulse"
-                style={{
-                  width: Math.random() * 2 + 'px',
-                  height: Math.random() * 2 + 'px',
-                  top: Math.random() * 100 + '%',
-                  left: Math.random() * 100 + '%',
-                  animationDelay: Math.random() * 5 + 's',
-                  opacity: Math.random() * 0.3
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        <Sidebar 
-          isSidebarOpen={isSidebarOpen}
-          setIsSidebarOpen={setIsSidebarOpen}
-          chats={chats}
-          currentChatId={currentChatId}
-          setCurrentChatId={setCurrentChatId}
-          createNewChat={createNewChat}
-          deleteChat={deleteChat}
-          savedScripts={savedScripts}
-          deleteScript={deleteScript}
-          user={user}
-          signOut={signOut}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-
-        <main className="flex-1 flex flex-col relative min-w-0 z-10">
-          <div className="lg:hidden absolute top-4 left-4 z-40">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/20 transition-all"
-            >
-              <MessageSquare size={16} />
-            </button>
-          </div>
-
-          <div 
-            ref={chatContainerRef}
-            className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar scroll-smooth"
-          >
-            <MessageList 
-              messages={messages} 
-              isGenerating={isGenerating} 
-              streamingText={streamingText}
-              onSuggestionClick={(text) => setSuggestion(text)}
-              onSaveScript={handleSaveScript}
-              onDownloadScript={handleDownloadScript}
+    <motion.div 
+      initial={settings.isOptimized ? { opacity: 1 } : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: settings.isOptimized ? 0 : 1 }}
+      className={cn(
+        "flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative",
+        settings.theme === 'dark' ? "bg-black" : settings.theme === 'light' ? "bg-gray-100 text-black" : "bg-[#050505]"
+      )}
+    >
+      {/* Star Background Layer */}
+      {!settings.isOptimized && (
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+          {[...Array(80)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute bg-white rounded-full animate-pulse"
+              style={{
+                width: Math.random() * 2 + 'px',
+                height: Math.random() * 2 + 'px',
+                top: Math.random() * 100 + '%',
+                left: Math.random() * 100 + '%',
+                animationDelay: Math.random() * 5 + 's',
+                opacity: Math.random() * 0.3
+              }}
             />
-          </div>
+          ))}
+        </div>
+      )}
 
-          <ChatInput 
-            onSend={handleSendMessage} 
+      <Sidebar 
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        chats={chats}
+        currentChatId={currentChatId}
+        setCurrentChatId={setCurrentChatId}
+        createNewChat={createNewChat}
+        deleteChat={deleteChat}
+        savedScripts={savedScripts}
+        deleteScript={deleteScript}
+        user={user}
+        signOut={signOut}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      <main className="flex-1 flex flex-col relative min-w-0 z-10">
+        <div className="lg:hidden absolute top-4 left-4 z-40">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/20 transition-all"
+          >
+            <MessageSquare size={16} />
+          </button>
+        </div>
+
+        <div 
+          ref={chatContainerRef}
+          className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar scroll-smooth"
+        >
+          <MessageList 
+            messages={messages} 
             isGenerating={isGenerating} 
-            initialValue={suggestion}
-            savedScripts={savedScripts}
-            lastAiMode={settings.lastAiMode}
-            onModeChange={(mode) => setSettings(prev => ({ ...prev, lastAiMode: mode }))}
+            streamingText={streamingText}
+            onSuggestionClick={(text) => setSuggestion(text)}
+            onSaveScript={handleSaveScript}
+            onDownloadScript={handleDownloadScript}
           />
-        </main>
+        </div>
 
-        <SettingsModal 
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          settings={settings}
-          onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
-          isAdmin={user?.email === 'soparonosk37@gmail.com'}
+        <ChatInput 
+          onSend={handleSendMessage} 
+          isGenerating={isGenerating} 
+          initialValue={suggestion}
+          savedScripts={savedScripts}
+          lastAiMode={settings.lastAiMode}
+          onModeChange={(mode) => setSettings(prev => ({ ...prev, lastAiMode: mode }))}
         />
+      </main>
 
-        <ConfirmationModal 
-          isOpen={confirmModal.isOpen}
-          title={confirmModal.title}
-          message={confirmModal.message}
-          onConfirm={confirmModal.onConfirm}
-          onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-        />
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
+        isAdmin={user?.email === 'soparonosk37@gmail.com'}
+      />
 
-        <style>{`
-          .custom-scrollbar::-webkit-scrollbar {
-            width: 3px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
-          }
-        `}</style>
-      </motion.div>
-    </ErrorBoundary>
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      `}</style>
+    </motion.div>
   );
 }

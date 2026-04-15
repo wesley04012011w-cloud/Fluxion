@@ -83,40 +83,6 @@
         }
       },
       "required": ["userId", "name", "content", "createdAt"]
-    },
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Profile information for a user.",
-      "type": "object",
-      "properties": {
-        "uid": {
-          "type": "string",
-          "description": "The UID of the user."
-        },
-        "email": {
-          "type": "string",
-          "description": "The email of the user."
-        },
-        "displayName": {
-          "type": "string",
-          "description": "The display name of the user."
-        },
-        "photoURL": {
-          "type": "string",
-          "description": "The photo URL of the user."
-        },
-        "lastSeen": {
-          "type": "string",
-          "format": "date-time",
-          "description": "When the user was last seen."
-        },
-        "role": {
-          "type": "string",
-          "enum": ["admin", "user"],
-          "description": "The role of the user."
-        }
-      },
-      "required": ["uid", "email", "lastSeen", "role"]
     }
   },
   "firestore": {
@@ -131,10 +97,6 @@
     "/scripts/{scriptId}": {
       "schema": "Script",
       "description": "Collection of saved Luau scripts."
-    },
-    "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "Collection of user profiles."
     }
   }
 }

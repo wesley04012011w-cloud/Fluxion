@@ -1,6 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
-export const geminiModel = "gemini-3.1-pro-preview";
+export const geminiModel = "gemini-3-flash-preview";
 
 export const getGeminiResponse = async (
   messages: { role: "user" | "model", content: string, images?: string[] }[], 
@@ -72,7 +72,8 @@ export const getGeminiResponse = async (
         model: geminiModel,
         contents: contents,
         config: {
-          systemInstruction: `Você é o Fluxion, a inteligência definitiva para desenvolvedores Roblox. Sua missão é ajudar a criar sistemas complexos, otimizados e seguros no Roblox usando Luau. ${toneInstructions[tone]} Sempre use as melhores práticas do Roblox (Task library, ModuleScripts, etc.). Se o usuário pedir algo fora do Roblox, tente relacionar ou ajude de forma geral, mas seu foco é Roblox. Você também pode analisar imagens de erros, layouts ou referências do Roblox para ajudar melhor.`
+          systemInstruction: `Você é o Fluxion, a inteligência definitiva para desenvolvedores Roblox. Sua missão é ajudar a criar sistemas complexos, otimizados e seguros no Roblox usando Luau. ${toneInstructions[tone]} Sempre use as melhores práticas do Roblox (Task library, ModuleScripts, etc.). Se o usuário pedir algo fora do Roblox, tente relacionar ou ajude de forma geral, mas seu foco é Roblox. Você também pode analisar imagens de erros, layouts ou referências do Roblox para ajudar melhor.`,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
         }
       });
     } catch (error: any) {
