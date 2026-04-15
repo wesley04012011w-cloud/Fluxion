@@ -31,7 +31,6 @@ import { setDoc } from 'firebase/firestore';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [chats, setChats] = useState<Chat[]>([]);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -88,17 +87,10 @@ export default function App() {
           console.error("Error updating user profile:", e);
         }
       }
-      setLoading(false);
     });
-
-    // Safety timeout: if auth doesn't respond in 10s, stop loading anyway
-    const timeout = setTimeout(() => {
-      setLoading(false);
-    }, 10000);
 
     return () => {
       unsubscribe();
-      clearTimeout(timeout);
     };
   }, []);
 
@@ -287,14 +279,6 @@ export default function App() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
-      </div>
-    );
-  }
 
   if (!user) {
     return (
