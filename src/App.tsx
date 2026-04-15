@@ -31,7 +31,6 @@ import { setDoc } from 'firebase/firestore';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [chats, setChats] = useState<Chat[]>([]);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -84,12 +83,15 @@ export default function App() {
             role: u.email === 'soparonosk37@gmail.com' ? 'admin' : 'user'
           }, { merge: true });
         } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, `users/${u.uid}`);
+          // Log error but don't block the app from loading
+          console.error("Error updating user profile:", e);
         }
       }
-      setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -278,14 +280,6 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   if (!user) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 overflow-hidden relative">
@@ -314,9 +308,10 @@ export default function App() {
         >
           <div className="w-24 h-24 bg-black border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl overflow-hidden group">
             <img 
-              src="/logo.png" 
+              src="https://i.imgur.com/aEWGDzh.png" 
               alt="Fluxion Logo" 
               className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 // Fallback if logo.png doesn't exist
                 (e.target as HTMLImageElement).style.display = 'none';
