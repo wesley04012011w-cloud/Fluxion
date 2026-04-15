@@ -244,8 +244,14 @@ export default function App() {
 
       setIsGenerating(false);
       setStreamingText('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
+      await addDoc(collection(db, `chats/${chatId}/messages`), {
+        chatId,
+        role: 'model',
+        content: `**Erro:** ${error.message || 'Falha ao gerar resposta.'}`,
+        createdAt: serverTimestamp()
+      });
       setIsGenerating(false);
       setStreamingText('');
     }
