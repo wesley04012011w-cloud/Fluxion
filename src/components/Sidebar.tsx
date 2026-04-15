@@ -24,8 +24,9 @@ interface SidebarProps {
   savedScripts: {id: string, name: string, content: string}[];
   deleteScript: (id: string, e: React.MouseEvent) => void;
   user: User | null;
+  apiKey: string;
+  setApiKey: (key: string) => void;
   signOut: () => void;
-  onOpenSettings: () => void;
 }
 
 const Sidebar = React.memo(({
@@ -39,9 +40,11 @@ const Sidebar = React.memo(({
   savedScripts,
   deleteScript,
   user,
-  signOut,
-  onOpenSettings
+  apiKey,
+  setApiKey,
+  signOut
 }: SidebarProps) => {
+  const [showApiInput, setShowApiInput] = React.useState(false);
   return (
     <motion.aside
       initial={false}
@@ -143,15 +146,35 @@ const Sidebar = React.memo(({
           </div>
         </div>
 
-        {/* Bottom Section: Settings & Sign Out */}
+        {/* Bottom Section: API Key & Sign Out */}
         <div className="mt-auto pt-4 border-t border-white/10 space-y-2">
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-all text-xs font-medium"
-          >
-            <Settings size={14} />
-            <span>Configurações</span>
-          </button>
+          {user?.email === 'soparonosk37@gmail.com' && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowApiInput(!showApiInput)}
+                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-all text-xs font-medium"
+              >
+                <Key size={14} />
+                <span>Configurar API Key</span>
+              </button>
+              
+              {showApiInput && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="px-2 pb-2"
+                >
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Cole sua chave aqui..."
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[10px] focus:outline-none focus:border-white/30 transition-all text-white"
+                  />
+                </motion.div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={signOut}

@@ -19,39 +19,36 @@ interface ChatInputProps {
   isGenerating: boolean;
   initialValue?: string;
   savedScripts?: {id: string, name: string, content: string}[];
-  lastAiMode?: string;
-  onModeChange?: (modeId: string) => void;
 }
 
 const ChatInput = React.memo(({ 
   onSend, 
   isGenerating,
   initialValue = '',
-  savedScripts = [],
-  lastAiMode = 'explain',
-  onModeChange
+  savedScripts = []
 }: ChatInputProps) => {
   const [input, setInput] = useState(initialValue);
   const [images, setImages] = useState<string[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
+  const [aiMode, setAiMode] = useState<{id: string, label: string, icon: any}>({
+    id: 'explain',
+    label: 'Explicação',
+    icon: Info
+  });
   const [filteredScripts, setFilteredScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
-  
+
   const aiModes = [
     { id: 'explain', label: 'Explicação', icon: Info },
     { id: 'learn', label: 'Aprender', icon: BookOpen },
     { id: 'think', label: 'Codigo pesado (think deeper)', icon: Brain },
     { id: 'search', label: 'Pesquisar', icon: Search },
   ];
-
-  const [aiMode, setAiMode] = useState<{id: string, label: string, icon: any}>(() => {
-    return aiModes.find(m => m.id === lastAiMode) || aiModes[0];
-  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -261,7 +258,6 @@ const ChatInput = React.memo(({
                         onClick={() => {
                           setAiMode(mode);
                           setShowModeMenu(false);
-                          onModeChange?.(mode.id);
                         }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold transition-all border-b border-white/5 last:border-0",

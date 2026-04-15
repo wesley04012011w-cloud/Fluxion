@@ -25,9 +25,7 @@ import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
-import SettingsModal from './components/SettingsModal';
-import { Chat, Message, OperationType, handleFirestoreError, AppSettings, UserProfile, cn } from './types';
-import { setDoc } from 'firebase/firestore';
+import { Chat, Message, OperationType, handleFirestoreError } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,42 +49,17 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingText, setStreamingText] = useState('');
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('fluxion_settings');
-    return saved ? JSON.parse(saved) : {
-      theme: 'glass',
-      aiTone: 'professional',
-      isOptimized: false,
-      lastAiMode: 'explain',
-      apiKeys: []
-    };
-  });
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('fluxion_settings', JSON.stringify(settings));
-  }, [settings]);
+    localStorage.setItem('gemini_api_key', apiKey);
+  }, [apiKey]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) {
-        // Update user profile in Firestore
-        try {
-          await setDoc(doc(db, 'users', u.uid), {
-            uid: u.uid,
-            email: u.email,
-            displayName: u.displayName,
-            photoURL: u.photoURL,
-            lastSeen: serverTimestamp(),
-            role: u.email === 'soparonosk37@gmail.com' ? 'admin' : 'user'
-          }, { merge: true });
-        } catch (e) {
-          console.error("Error updating user profile:", e);
-        }
-      }
       setLoading(false);
     });
     return unsubscribe;
@@ -226,7 +199,7 @@ export default function App() {
         { role: 'user', content: text, images: images }
       ];
 
-      const result = await getGeminiResponse(allMessages, settings.apiKeys, settings.aiTone);
+      const result = await getGeminiResponse(allMessages, apiKey);
       let fullText = '';
       
       for await (const chunk of result) {
@@ -340,33 +313,28 @@ export default function App() {
 
   return (
     <motion.div 
-      initial={settings.isOptimized ? { opacity: 1 } : { opacity: 0 }}
+      initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: settings.isOptimized ? 0 : 1 }}
-      className={cn(
-        "flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative",
-        settings.theme === 'dark' ? "bg-black" : settings.theme === 'light' ? "bg-gray-100 text-black" : "bg-[#050505]"
-      )}
+      transition={{ duration: 1 }}
+      className="flex h-screen bg-[#050505] text-white font-sans selection:bg-white/20 overflow-hidden relative"
     >
       {/* Star Background Layer */}
-      {!settings.isOptimized && (
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          {[...Array(80)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute bg-white rounded-full animate-pulse"
-              style={{
-                width: Math.random() * 2 + 'px',
-                height: Math.random() * 2 + 'px',
-                top: Math.random() * 100 + '%',
-                left: Math.random() * 100 + '%',
-                animationDelay: Math.random() * 5 + 's',
-                opacity: Math.random() * 0.3
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        {[...Array(80)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute bg-white rounded-full animate-pulse"
+            style={{
+              width: Math.random() * 2 + 'px',
+              height: Math.random() * 2 + 'px',
+              top: Math.random() * 100 + '%',
+              left: Math.random() * 100 + '%',
+              animationDelay: Math.random() * 5 + 's',
+              opacity: Math.random() * 0.3
+            }}
+          />
+        ))}
+      </div>
 
       <Sidebar 
         isSidebarOpen={isSidebarOpen}
@@ -379,8 +347,9 @@ export default function App() {
         savedScripts={savedScripts}
         deleteScript={deleteScript}
         user={user}
+        apiKey={apiKey}
+        setApiKey={setApiKey}
         signOut={signOut}
-        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <main className="flex-1 flex flex-col relative min-w-0 z-10">
@@ -412,18 +381,8 @@ export default function App() {
           isGenerating={isGenerating} 
           initialValue={suggestion}
           savedScripts={savedScripts}
-          lastAiMode={settings.lastAiMode}
-          onModeChange={(mode) => setSettings(prev => ({ ...prev, lastAiMode: mode }))}
         />
       </main>
-
-      <SettingsModal 
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
-        isAdmin={user?.email === 'soparonosk37@gmail.com'}
-      />
 
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}

@@ -14,23 +14,6 @@ export interface Chat {
   updatedAt: Timestamp;
 }
 
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName?: string;
-  photoURL?: string;
-  lastSeen: Timestamp;
-  role: 'admin' | 'user';
-}
-
-export interface AppSettings {
-  theme: 'dark' | 'light' | 'glass';
-  aiTone: 'friendly' | 'direct' | 'professional';
-  isOptimized: boolean;
-  lastAiMode: string;
-  apiKeys: string[];
-}
-
 export interface Message {
   id: string;
   role: 'user' | 'model';
