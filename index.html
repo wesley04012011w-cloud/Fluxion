@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BloxScript AI</title>
-    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#2563eb" />
     <link rel="apple-touch-icon" href="https://picsum.photos/seed/bloxscript/192/192" />
     <link rel="icon" type="image/png" href="https://picsum.photos/seed/bloxscript/32/32" />
@@ -12,17 +11,6 @@
     <meta property="og:title" content="BloxScript AI" />
     <meta property="og:description" content="Especialista em scripts Luau para Roblox." />
     <meta property="og:image" content="https://picsum.photos/seed/bloxscript/1200/630" />
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
-            console.log('SW registered');
-          }).catch(err => {
-            console.log('SW registration failed: ', err);
-          });
-        });
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>
