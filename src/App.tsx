@@ -314,9 +314,10 @@ export default function App() {
         >
           <div className="w-24 h-24 bg-black border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl overflow-hidden group">
             <img 
-              src="/logo.png" 
+              src="https://i.imgur.com/aEWGDzh.png" 
               alt="Fluxion Logo" 
               className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 // Fallback if logo.png doesn't exist
                 (e.target as HTMLImageElement).style.display = 'none';
