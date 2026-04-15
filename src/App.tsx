@@ -314,11 +314,11 @@ export default function App() {
         >
           <div className="w-24 h-24 bg-black border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl overflow-hidden group">
             <img 
-              src="/icon.png" 
+              src="/logo.png" 
               alt="Fluxion Logo" 
               className="w-full h-full object-cover"
               onError={(e) => {
-                // Fallback if icon.png doesn't exist
+                // Fallback if logo.png doesn't exist
                 (e.target as HTMLImageElement).style.display = 'none';
                 (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="text-4xl font-black text-white">F</div>';
               }}

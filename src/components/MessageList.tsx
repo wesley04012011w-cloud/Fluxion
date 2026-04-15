@@ -146,7 +146,7 @@ const MessageList = React.memo(({
           className="p-4 bg-white/10 rounded-full mb-2"
         >
           <img 
-            src="/icon.png" 
+            src="/logo.png" 
             alt="Fluxion" 
             className="w-12 h-12 object-cover rounded-lg"
             onError={(e) => {
