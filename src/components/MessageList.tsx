@@ -143,13 +143,12 @@ const MessageList = React.memo(({
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="p-4 bg-white/10 rounded-full mb-2 overflow-hidden w-20 h-20 flex items-center justify-center"
+          className="p-4 bg-white/10 rounded-full mb-2"
         >
           <img 
-            src="https://i.imgur.com/aEWGDzh.png" 
+            src="/logo.png" 
             alt="Fluxion" 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
+            className="w-12 h-12 object-cover rounded-lg"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
               (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="text-2xl font-black text-white">F</div>';
