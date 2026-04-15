@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "Chat": {
+      "title": "Chat Session",
+      "description": "A chat session containing multiple messages.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who owns this chat."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the chat session."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the chat was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the chat was last updated."
+        }
+      },
+      "required": ["userId", "title", "createdAt", "updatedAt"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "description": "A single message within a chat session.",
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string",
+          "description": "The ID of the parent chat session."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "model"],
+          "description": "The role of the message sender."
+        },
+        "content": {
+          "type": "string",
+          "description": "The text content of the message."
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of base64 encoded images."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the message was sent."
+        }
+      },
+      "required": ["chatId", "role", "content", "createdAt"]
+    },
+    "Script": {
+      "title": "Saved Script",
+      "description": "A Luau script saved by the user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who owns this script."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the script."
+        },
+        "content": {
+          "type": "string",
+          "description": "The Luau code content."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the script was saved."
+        }
+      },
+      "required": ["userId", "name", "content", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Profile information for a user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The UID of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The display name of the user."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "The photo URL of the user."
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user was last seen."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "The role of the user."
+        }
+      },
+      "required": ["uid", "email", "lastSeen", "role"]
+    }
+  },
+  "firestore": {
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Collection of chat sessions."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Sub-collection of messages for a specific chat."
+    },
+    "/scripts/{scriptId}": {
+      "schema": "Script",
+      "description": "Collection of saved Luau scripts."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Collection of user profiles."
+    }
+  }
+}

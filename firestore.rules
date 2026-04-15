@@ -1,0 +1,148 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: chats
+// Document ID: {chatId}
+// Fields:
+//   - userId: string (required) - Owner UID
+//   - title: string (required) - Chat title
+//   - createdAt: timestamp (required)
+//   - updatedAt: timestamp (required)
+//
+// Collection: chats/{chatId}/messages
+// Document ID: {messageId}
+// Fields:
+//   - chatId: string (required)
+//   - role: string (required, enum: ['user', 'model'])
+//   - content: string (required)
+//   - createdAt: timestamp (required)
+//
+// Collection: scripts
+// Document ID: {scriptId}
+// Fields:
+//   - userId: string (required)
+//   - name: string (required)
+//   - content: string (required)
+//   - createdAt: timestamp (required)
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required)
+//   - email: string (required)
+//   - displayName: string (optional)
+//   - photoURL: string (optional)
+//   - lastSeen: timestamp (required)
+//   - role: string (required, enum: ['admin', 'user'])
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "soparonosk37@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isChatOwner(chatId) {
+      return isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.userId;
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['userId', 'title', 'createdAt', 'updatedAt']) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['chatId', 'role', 'content', 'createdAt']) &&
+             data.role in ['user', 'model'] &&
+             data.content is string && data.content.size() <= 100000 &&
+             (!('images' in data) || (data.images is list && data.images.size() <= 10)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidScript(data) {
+      return data.keys().hasAll(['userId', 'name', 'content', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.content is string && data.content.size() <= 100000 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'lastSeen', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() > 0 &&
+             data.lastSeen is timestamp &&
+             data.role in ['admin', 'user'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500));
+    }
+
+    // User Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) &&
+                      (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Chat Rules
+    match /chats/{chatId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidChat(request.resource.data);
+      allow update: if isOwner(resource.data.userId) && 
+                      isValidChat(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.userId);
+
+      // Message Rules
+      match /messages/{messageId} {
+        allow read: if isChatOwner(chatId);
+        allow create: if isChatOwner(chatId) && isValidMessage(request.resource.data);
+        // Allow updates for streaming content
+        allow update: if isChatOwner(chatId) && 
+                        isValidMessage(request.resource.data) &&
+                        request.resource.data.role == resource.data.role &&
+                        request.resource.data.chatId == resource.data.chatId &&
+                        request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isChatOwner(chatId);
+      }
+    }
+
+    // Script Rules
+    match /scripts/{scriptId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidScript(request.resource.data);
+      allow update: if isOwner(resource.data.userId) && 
+                      isValidScript(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
