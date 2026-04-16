@@ -14,8 +14,10 @@ import {
 } from 'lucide-react';
 import { cn } from '../types';
 
+import { ThinkingLevel } from "@google/genai";
+
 interface ChatInputProps {
-  onSend: (text: string, images?: string[]) => void;
+  onSend: (text: string, images?: string[], thinkingLevel?: ThinkingLevel) => void;
   isGenerating: boolean;
   initialValue?: string;
   savedScripts?: {id: string, name: string, content: string}[];
@@ -32,22 +34,34 @@ const ChatInput = React.memo(({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
-  const [aiMode, setAiMode] = useState<{id: string, label: string, icon: any}>({
-    id: 'explain',
-    label: 'Explicação',
-    icon: Info
+  const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [aiMode, setAiMode] = useState<{id: ThinkingLevel, label: string, icon: any}>({
+    id: ThinkingLevel.HIGH,
+    label: 'Avançado (High)',
+    icon: Brain
   });
   const [filteredScripts, setFilteredScripts] = useState<{id: string, name: string, content: string}[]>([]);
+  const [filteredCommands, setFilteredCommands] = useState<{id: string, name: string, desc: string}[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
 
   const aiModes = [
-    { id: 'explain', label: 'Explicação', icon: Info },
-    { id: 'learn', label: 'Aprender', icon: BookOpen },
-    { id: 'think', label: 'Codigo pesado (think deeper)', icon: Brain },
-    { id: 'search', label: 'Pesquisar', icon: Search },
+    { id: ThinkingLevel.OFF, label: 'Rápido (Off)', icon: Info },
+    { id: ThinkingLevel.LOW, label: 'Básico (Low)', icon: BookOpen },
+    { id: ThinkingLevel.MEDIUM, label: 'Médio (Medium)', icon: Search },
+    { id: ThinkingLevel.HIGH, label: 'Avançado (High)', icon: Brain },
+  ];
+
+  const systemCommands = [
+    { id: 'cmd1', name: '!block', desc: 'Divide o script em blocos (ex: !block 4)' },
+    { id: 'cmd2', name: '!next', desc: 'Gera o próximo bloco' },
+    { id: 'cmd3', name: '/start', desc: 'Inicia um novo script do zero' },
+    { id: 'cmd4', name: '/next', desc: 'Continua a geração normal' },
+    { id: 'cmd5', name: '/repeat', desc: 'Repete o último bloco' },
+    { id: 'cmd6', name: '/stop', desc: 'Para a geração imediatamente' },
+    { id: 'cmd7', name: '/scripts', desc: 'Gera script baseado em sistema' },
   ];
 
   useEffect(() => {
@@ -135,14 +149,33 @@ const ChatInput = React.memo(({
     const words = value.split(/\s/);
     const lastWord = words[words.length - 1];
 
-    if (lastWord.startsWith('/')) {
+    if (lastWord.startsWith('!')) {
+      const queryText = lastWord.slice(1).toLowerCase();
+      const filtered = systemCommands.filter(c => 
+        c.name.toLowerCase().includes(queryText) || 
+        c.desc.toLowerCase().includes(queryText)
+      );
+      setFilteredCommands(filtered);
+      setShowCommandMenu(filtered.length > 0);
+      setShowSlashMenu(false);
+    } else if (lastWord.startsWith('/')) {
       const queryText = lastWord.slice(1).toLowerCase();
       const filtered = savedScripts.filter(s => s.name.toLowerCase().includes(queryText));
       setFilteredScripts(filtered);
       setShowSlashMenu(filtered.length > 0);
+      setShowCommandMenu(false);
     } else {
       setShowSlashMenu(false);
+      setShowCommandMenu(false);
     }
+  };
+
+  const insertCommand = (cmd: string) => {
+    const words = input.split(/\s/);
+    words.pop(); // Remove the !command
+    const newValue = words.join(' ') + (words.length > 0 ? ' ' : '') + cmd + ' ';
+    setInput(newValue);
+    setShowCommandMenu(false);
   };
 
   const insertScript = (script: {name: string, content: string}) => {
@@ -157,14 +190,7 @@ const ChatInput = React.memo(({
     e.preventDefault();
     if ((!input.trim() && images.length === 0) || isGenerating) return;
     
-    // Prepend mode context to the message
-    let finalInput = input;
-    if (aiMode.id === 'explain') finalInput = `[MODO: EXPLICAÇÃO] ${input}`;
-    if (aiMode.id === 'learn') finalInput = `[MODO: APRENDER] ${input}`;
-    if (aiMode.id === 'think') finalInput = `[MODO: THINK DEEPER - CODIGO PESADO] ${input}`;
-    if (aiMode.id === 'search') finalInput = `[MODO: PESQUISAR] ${input}`;
-
-    onSend(finalInput, images);
+    onSend(input, images, aiMode.id);
     setInput('');
     setImages([]);
   };
@@ -178,7 +204,7 @@ const ChatInput = React.memo(({
         {images.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2 p-1.5 bg-white/5 backdrop-blur-md rounded-lg border border-white/10">
             {images.map((img, i) => (
-              <div key={i} className="relative group/img">
+              <div key={`preview-${i}`} className="relative group/img">
                 <img src={img} className="w-12 h-12 object-cover rounded border border-white/20" alt="Preview" />
                 <button
                   type="button"
@@ -272,6 +298,34 @@ const ChatInput = React.memo(({
                 )}
               </AnimatePresence>
             </div>
+
+            <AnimatePresence>
+              {showCommandMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: -5 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute bottom-full left-0 w-full mb-2 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
+                >
+                  <div className="px-3 py-2 bg-white/5 border-b border-white/5 text-[8px] font-bold text-gray-500 uppercase tracking-widest">
+                    Comandos do Sistema
+                  </div>
+                  {filteredCommands.map(cmd => (
+                    <button
+                      key={cmd.id}
+                      type="button"
+                      onClick={() => insertCommand(cmd.name)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10 transition-all border-b border-white/5 last:border-0"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-bold text-white">{cmd.name}</div>
+                        <div className="text-[9px] text-gray-400 truncate">{cmd.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence>
               {showSlashMenu && (

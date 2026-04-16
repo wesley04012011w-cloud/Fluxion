@@ -14,6 +14,21 @@ export interface Chat {
   updatedAt: Timestamp;
 }
 
+export interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  lastActive: Timestamp;
+  isOnline: boolean;
+}
+
+export interface AppConfig {
+  id: string;
+  geminiApiKeys: string[];
+  updatedAt: Timestamp;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'model';

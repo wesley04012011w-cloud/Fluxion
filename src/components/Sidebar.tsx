@@ -8,10 +8,12 @@ import {
   ChevronLeft,
   Key,
   LogOut,
-  Settings
+  Settings,
+  Shield
 } from 'lucide-react';
 import { Chat, cn } from '../types';
 import { User } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -47,6 +49,9 @@ const Sidebar = React.memo(({
   signIn
 }: SidebarProps) => {
   const [showApiInput, setShowApiInput] = React.useState(false);
+  const navigate = useNavigate();
+  const isAdmin = user?.email === 'soparonosk37@gmail.com';
+
   return (
     <motion.aside
       initial={false}
@@ -158,6 +163,16 @@ const Sidebar = React.memo(({
 
         {/* Bottom Section: API Key & Sign Out */}
         <div className="mt-auto pt-4 border-t border-white/10 space-y-2">
+          {isAdmin && (
+            <button
+              onClick={() => navigate('/home')}
+              className="flex items-center gap-2 w-full p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-xs font-bold border border-white/10"
+            >
+              <Shield size={14} />
+              <span>PAINEL ADMIN</span>
+            </button>
+          )}
+
           {user?.email === 'soparonosk37@gmail.com' && (
             <div className="space-y-2">
               <button

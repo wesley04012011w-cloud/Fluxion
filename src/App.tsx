@@ -17,6 +17,7 @@ import {
   doc,
   deleteDoc,
   updateDoc,
+  setDoc,
   Timestamp
 } from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
@@ -25,7 +26,11 @@ import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
+import SaveScriptModal from './components/SaveScriptModal';
 import { Chat, Message, OperationType, handleFirestoreError } from './types';
+
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import ConfigPage from './pages/ConfigPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,6 +56,16 @@ export default function App() {
   const [streamingText, setStreamingText] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
 
+  const [saveModal, setSaveModal] = useState<{
+    isOpen: boolean;
+    content: string;
+    defaultName: string;
+  }>({
+    isOpen: false,
+    content: '',
+    defaultName: ''
+  });
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,9 +76,35 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+      
+      if (u) {
+        // Update user activity
+        setDoc(doc(db, 'users', u.uid), {
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          lastActive: serverTimestamp(),
+          isOnline: true
+        }, { merge: true });
+      }
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // Heartbeat for online status
+    const interval = setInterval(() => {
+      setDoc(doc(db, 'users', user.uid), {
+        lastActive: serverTimestamp(),
+        isOnline: true
+      }, { merge: true });
+    }, 60000); // Every minute
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -244,14 +285,33 @@ export default function App() {
         return;
       }
     }
+    setSaveModal({
+      isOpen: true,
+      content: content,
+      defaultName: name
+    });
+  };
+
+  const executeSaveScript = async (name: string, overwrite: boolean) => {
+    if (!user) return;
     try {
-      await addDoc(collection(db, 'scripts'), {
-        userId: user.uid,
-        name: name,
-        content: content,
-        createdAt: serverTimestamp()
-      });
-      alert('Script salvo com sucesso!');
+      if (overwrite) {
+        const existingScript = savedScripts.find(s => s.name.toLowerCase() === name.toLowerCase());
+        if (existingScript) {
+          await updateDoc(doc(db, 'scripts', existingScript.id), {
+            content: saveModal.content,
+            updatedAt: serverTimestamp()
+          });
+        }
+      } else {
+        await addDoc(collection(db, 'scripts'), {
+          userId: user.uid,
+          name: name,
+          content: saveModal.content,
+          createdAt: serverTimestamp()
+        });
+      }
+      setSaveModal(prev => ({ ...prev, isOpen: false }));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'scripts');
     }
@@ -278,108 +338,124 @@ export default function App() {
   }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1 }}
-      className="flex h-screen bg-[#050505] text-white font-sans selection:bg-white/20 overflow-hidden relative"
-    >
-      {/* Star Background Layer */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        {[...Array(80)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute bg-white rounded-full animate-pulse"
-            style={{
-              width: Math.random() * 2 + 'px',
-              height: Math.random() * 2 + 'px',
-              top: Math.random() * 100 + '%',
-              left: Math.random() * 100 + '%',
-              animationDelay: Math.random() * 5 + 's',
-              opacity: Math.random() * 0.3
-            }}
-          />
-        ))}
-      </div>
-
-      <Sidebar 
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
-        chats={chats}
-        currentChatId={currentChatId}
-        setCurrentChatId={setCurrentChatId}
-        createNewChat={async () => {
-          if (!user) {
-            await signIn();
-            return;
-          }
-          createNewChat();
-        }}
-        deleteChat={deleteChat}
-        savedScripts={savedScripts}
-        deleteScript={deleteScript}
-        user={user}
-        apiKey={apiKey}
-        setApiKey={setApiKey}
-        signOut={signOut}
-        signIn={signIn}
-      />
-
-      <main className="flex-1 flex flex-col relative min-w-0 z-10">
-        <div className="lg:hidden absolute top-4 left-4 z-40">
-          <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/20 transition-all"
+    <BrowserRouter>
+      <Routes>
+        <Route path="/home" element={<ConfigPage />} />
+        <Route path="/" element={
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1 }}
+            className="flex h-screen bg-[#050505] text-white font-sans selection:bg-white/20 overflow-hidden relative"
           >
-            <MessageSquare size={16} />
-          </button>
-        </div>
+            {/* Star Background Layer */}
+            <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+              {[...Array(80)].map((_, i) => (
+                <div
+                  key={`star-${i}`}
+                  className="absolute bg-white rounded-full animate-pulse"
+                  style={{
+                    width: Math.random() * 2 + 'px',
+                    height: Math.random() * 2 + 'px',
+                    top: Math.random() * 100 + '%',
+                    left: Math.random() * 100 + '%',
+                    animationDelay: Math.random() * 5 + 's',
+                    opacity: Math.random() * 0.3
+                  }}
+                />
+              ))}
+            </div>
 
-        <div 
-          ref={chatContainerRef}
-          className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar scroll-smooth"
-        >
-          <MessageList 
-            messages={messages} 
-            isGenerating={isGenerating} 
-            streamingText={streamingText}
-            onSuggestionClick={(text) => setSuggestion(text)}
-            onSaveScript={handleSaveScript}
-            onDownloadScript={handleDownloadScript}
-          />
-        </div>
+            <Sidebar 
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              chats={chats}
+              currentChatId={currentChatId}
+              setCurrentChatId={setCurrentChatId}
+              createNewChat={async () => {
+                if (!user) {
+                  await signIn();
+                  return;
+                }
+                createNewChat();
+              }}
+              deleteChat={deleteChat}
+              savedScripts={savedScripts}
+              deleteScript={deleteScript}
+              user={user}
+              apiKey={apiKey}
+              setApiKey={setApiKey}
+              signOut={signOut}
+              signIn={signIn}
+            />
 
-        <ChatInput 
-          onSend={handleSendMessage} 
-          isGenerating={isGenerating} 
-          initialValue={suggestion}
-          savedScripts={savedScripts}
-        />
-      </main>
+            <main className="flex-1 flex flex-col relative min-w-0 z-10">
+              <div className="lg:hidden absolute top-4 left-4 z-40">
+                <button 
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/20 transition-all"
+                >
+                  <MessageSquare size={16} />
+                </button>
+              </div>
 
-      <ConfirmationModal 
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        onConfirm={confirmModal.onConfirm}
-        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-      />
+              <div 
+                ref={chatContainerRef}
+                className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar scroll-smooth"
+              >
+                <MessageList 
+                  messages={messages} 
+                  isGenerating={isGenerating} 
+                  streamingText={streamingText}
+                  onSuggestionClick={(text) => setSuggestion(text)}
+                  onSaveScript={handleSaveScript}
+                  onDownloadScript={handleDownloadScript}
+                />
+              </div>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-      `}</style>
-    </motion.div>
+              <ChatInput 
+                onSend={handleSendMessage} 
+                isGenerating={isGenerating} 
+                initialValue={suggestion}
+                savedScripts={savedScripts}
+              />
+            </main>
+
+            <ConfirmationModal 
+              isOpen={confirmModal.isOpen}
+              title={confirmModal.title}
+              message={confirmModal.message}
+              onConfirm={confirmModal.onConfirm}
+              onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
+
+            <SaveScriptModal
+              isOpen={saveModal.isOpen}
+              onClose={() => setSaveModal(prev => ({ ...prev, isOpen: false }))}
+              onSave={executeSaveScript}
+              existingScripts={savedScripts}
+              defaultName={saveModal.defaultName}
+            />
+
+            <style>{`
+              .custom-scrollbar::-webkit-scrollbar {
+                width: 3px;
+              }
+              .custom-scrollbar::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+              }
+              .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.2);
+              }
+            `}</style>
+          </motion.div>
+        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

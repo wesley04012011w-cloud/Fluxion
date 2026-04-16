@@ -83,6 +83,29 @@
         }
       },
       "required": ["userId", "name", "content", "createdAt"]
+    },
+    "User": {
+      "title": "Application User",
+      "description": "User profile and activity tracking.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "isOnline": { "type": "boolean" }
+      },
+      "required": ["uid", "lastActive"]
+    },
+    "Config": {
+      "title": "App Configuration",
+      "description": "Global settings and API keys.",
+      "type": "object",
+      "properties": {
+        "geminiApiKeys": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -97,6 +120,14 @@
     "/scripts/{scriptId}": {
       "schema": "Script",
       "description": "Collection of saved Luau scripts."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and activity."
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "Global configuration."
     }
   }
 }

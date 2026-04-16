@@ -49,7 +49,7 @@ const MessageItem = React.memo(({
           <div className="flex flex-wrap gap-2 mb-3">
             {msg.images.map((img, i) => (
               <img 
-                key={i} 
+                key={`img-${msg.id}-${i}`} 
                 src={img} 
                 alt="Upload" 
                 className="w-20 h-20 md:w-24 md:h-24 object-cover rounded-lg border border-white/10"

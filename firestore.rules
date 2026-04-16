@@ -26,6 +26,22 @@
 //   - content: string (required)
 //   - createdAt: timestamp (required)
 //
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required)
+//   - email: string
+//   - displayName: string
+//   - photoURL: string
+//   - lastActive: timestamp (required)
+//   - isOnline: boolean
+//
+// Collection: config
+// Document ID: main
+// Fields:
+//   - geminiApiKeys: list (strings)
+//   - updatedAt: timestamp
+//
 // ===============================================================
 
 rules_version = '2';
@@ -35,6 +51,11 @@ service cloud.firestore {
     // Helper Functions
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "soparonosk37@gmail.com" && request.auth.token.email_verified == true);
     }
 
     function isOwner(userId) {
@@ -67,6 +88,21 @@ service cloud.firestore {
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.content is string && data.content.size() <= 100000 &&
              data.createdAt is timestamp;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'lastActive']) &&
+             data.uid == request.auth.uid &&
+             data.lastActive is timestamp &&
+             (!('email' in data) || data.email is string) &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('isOnline' in data) || data.isOnline is bool);
+    }
+
+    function isValidConfig(data) {
+      return (!('geminiApiKeys' in data) || (data.geminiApiKeys is list)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // Chat Rules
@@ -102,6 +138,18 @@ service cloud.firestore {
                       request.resource.data.userId == resource.data.userId &&
                       request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isOwner(resource.data.userId);
+    }
+
+    // User Rules
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    // Config Rules
+    match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidConfig(request.resource.data);
     }
 
     // Default deny

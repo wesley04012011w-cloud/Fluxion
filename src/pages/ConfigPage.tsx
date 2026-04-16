@@ -1,0 +1,251 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, 
+  Key, 
+  Shield, 
+  Activity, 
+  Plus, 
+  Trash2, 
+  Save,
+  ChevronLeft,
+  Circle
+} from 'lucide-react';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  setDoc,
+  getDoc,
+  serverTimestamp,
+  orderBy,
+  Timestamp
+} from 'firebase/firestore';
+import { AppUser, AppConfig, OperationType, handleFirestoreError } from '../types';
+import { motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
+
+const ADMIN_EMAIL = 'soparonosk37@gmail.com';
+
+export default function ConfigPage() {
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [newKey, setNewKey] = useState('');
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (auth.currentUser?.email !== ADMIN_EMAIL) {
+      navigate('/');
+      return;
+    }
+
+    // Listen to active users
+    const usersQuery = query(collection(db, 'users'), orderBy('lastActive', 'desc'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const userList = snapshot.docs.map(doc => doc.data() as AppUser);
+      setUsers(userList);
+    });
+
+    // Listen to config
+    const configDoc = doc(db, 'config', 'main');
+    const unsubscribeConfig = onSnapshot(configDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        setConfig({ id: snapshot.id, ...snapshot.data() } as AppConfig);
+      } else {
+        // Initialize config if it doesn't exist
+        setDoc(configDoc, {
+          geminiApiKeys: [],
+          updatedAt: serverTimestamp()
+        });
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeConfig();
+    };
+  }, [navigate]);
+
+  const addApiKey = async () => {
+    if (!newKey.trim() || !config) return;
+    try {
+      const updatedKeys = [...(config.geminiApiKeys || []), newKey.trim()];
+      await updateDoc(doc(db, 'config', 'main'), {
+        geminiApiKeys: updatedKeys,
+        updatedAt: serverTimestamp()
+      });
+      setNewKey('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+    }
+  };
+
+  const removeApiKey = async (index: number) => {
+    if (!config) return;
+    try {
+      const updatedKeys = config.geminiApiKeys.filter((_, i) => i !== index);
+      await updateDoc(doc(db, 'config', 'main'), {
+        geminiApiKeys: updatedKeys,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
+        <header className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate('/')}
+              className="p-2 hover:bg-white/5 rounded-xl transition-all text-gray-400 hover:text-white"
+            >
+              <ChevronLeft size={24} />
+            </button>
+            <div>
+              <h1 className="text-3xl font-black tracking-tighter flex items-center gap-3">
+                <Shield className="text-white" />
+                PAINEL DE CONTROLE
+              </h1>
+              <p className="text-gray-500 text-sm">Administração do sistema Fluxion</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* API Keys Management */}
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-white/10 rounded-lg">
+                <Key size={20} />
+              </div>
+              <h2 className="text-xl font-bold">Gerenciar API Keys</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <input 
+                  type="password" 
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  placeholder="Nova Gemini API Key..."
+                  className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 transition-all"
+                />
+                <button 
+                  onClick={addApiKey}
+                  className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center gap-2"
+                >
+                  <Plus size={18} />
+                  ADD
+                </button>
+              </div>
+
+              <div className="space-y-2 mt-6">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Chaves Ativas</label>
+                {config?.geminiApiKeys.length === 0 ? (
+                  <p className="text-gray-600 text-sm italic py-4">Nenhuma chave configurada.</p>
+                ) : (
+                  config?.geminiApiKeys.map((key, index) => (
+                    <div key={`key-${index}`} className="flex items-center justify-between bg-black/40 border border-white/5 p-3 rounded-xl group">
+                      <code className="text-xs text-gray-400 font-mono">
+                        {key.substring(0, 8)}••••••••••••{key.substring(key.length - 4)}
+                      </code>
+                      <button 
+                        onClick={() => removeApiKey(index)}
+                        className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </motion.section>
+
+          {/* User Management */}
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <Users size={20} />
+                </div>
+                <h2 className="text-xl font-bold">Usuários Ativos</h2>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
+                <Activity size={12} className="text-green-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-green-500 uppercase">{users.length} ONLINE</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              {users.length === 0 ? (
+                <p className="text-gray-600 text-sm italic py-4">Nenhum usuário ativo no momento.</p>
+              ) : (
+                users.map((user) => (
+                  <div key={user.uid} className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-2xl">
+                    <div className="relative">
+                      <img 
+                        src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=random`} 
+                        alt={user.displayName || ''} 
+                        className="w-10 h-10 rounded-full border border-white/10"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-bold truncate">{user.displayName || 'Usuário Anônimo'}</h3>
+                      <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-gray-600 uppercase">Visto por último</p>
+                      <p className="text-[10px] text-gray-400">
+                        {user.lastActive?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.section>
+        </div>
+      </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+      `}</style>
+    </div>
+  );
+}
