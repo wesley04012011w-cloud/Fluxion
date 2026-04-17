@@ -70,14 +70,14 @@ const MessageItem = React.memo(({
                     <span className="text-[9px] font-mono text-gray-500 uppercase">{match[1]}</span>
                     <div className="flex items-center gap-1.5">
                       <button 
-                        onClick={() => onSaveScript('RobloxScript', codeContent)}
+                        onClick={() => onSaveScript('FluxionScript', codeContent)}
                         className="p-1 hover:bg-white/10 rounded text-[9px] font-bold text-white transition-all flex items-center gap-1"
                         title="Salvar no App"
                       >
                         <Save size={10} /> SAVE
                       </button>
                       <button 
-                        onClick={() => onDownloadScript('RobloxScript', codeContent)}
+                        onClick={() => onDownloadScript('FluxionScript', codeContent)}
                         className="p-1 hover:bg-white/10 rounded text-[9px] font-bold text-white transition-all flex items-center gap-1"
                         title="Baixar Arquivo"
                       >

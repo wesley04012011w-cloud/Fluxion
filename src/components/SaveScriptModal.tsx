@@ -24,7 +24,7 @@ export default function SaveScriptModal({
 
   useEffect(() => {
     if (isOpen) {
-      setName(defaultName || 'RobloxScript');
+      setName(defaultName || 'FluxionScript');
       setError('');
       setShowOverwriteWarning(false);
     }

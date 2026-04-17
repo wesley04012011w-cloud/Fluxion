@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bloxscript-v1';
+const CACHE_NAME = 'fluxion-v1';
 const ASSETS = [
   '/',
   '/index.html',
