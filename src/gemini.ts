@@ -116,14 +116,12 @@ REGRAS DE GERAÇÃO DE BLOCOS:
 - NUNCA repita blocos anteriores.
 - NUNCA pule etapas lógicas.
 - SEMPRE mantenha a continuidade. O código deve se conectar perfeitamente entre os blocos.
-- Formato obrigatório:
-  \`\`\`lua
+
   -- BLOCO X de Y
   (código aqui)
-  -- FIM DO BLOCO X. Aguardando !next...
-  \`\`\`
+  -- FIM DO BLOCO X. Aguardando !next..
 
-IMPORTANTE: TODO O CÓDIGO DO BLOCO DEVE VIR DENTRO DA CAIXA DE CÓDIGO MARKDOWN (\`\`\`lua). NUNCA envie código solto no texto para não poluir a interface.
+IMPORTANTE: TODO O CÓDIGO DO BLOCO DEVE VIR DENTRO DA CAIXA DE CÓDIGO MARKDOWN. NUNCA envie código solto no texto para não poluir a interface.
 
 ========================
 FINALIZAÇÃO
@@ -147,7 +145,7 @@ Regras de Geração (Processamento Interno):
 
 O que o usuário DEVE VER NA RESPOSTA FISICAMENTE:
 - Uma breve saudação e explicação técnica indicativa dos módulos sendo produzidos (1 a 3 linhas).
-- Os blocos de código LUA imediatamente depois, divididos lógicamente em caixas MARKDOWN ( \`\`\`lua ... \`\`\` ).
+- Os blocos de código LUA imediatamente depois, divididos lógicamente em caixas MARKDOWN.
 - NUNCA escreva as tags de etapa literalmente (ex: nada de "=== ETAPA 1 ===" ou "- Analisando o pedido...").
 
 ========================
@@ -161,11 +159,9 @@ APLIQUE ESTAS REGRAS ESTRITAS DE QUEBRA:
 - Aguarde o comando "!next" do usuário para lhe dar permissão para gerar o PRÓXIMO bloco.
 - NUNCA repita código do bloco anterior.
 - Formato obrigatório no final da resposta do bloco:
-  \`\`\`lua
   -- BLOCO X de Y
   (código desse bloco específico)
   -- FIM DO BLOCO X. Aguardando !next...
-  \`\`\`
 Quando você enviar o último bloco de todos, escreva \`-- FIM DO SCRIPT\`.
 
 Evite texto desnecessário, foque em lógica e estrutura profissional.`;
