@@ -66,6 +66,7 @@ const ChatInput = React.memo(({
   const systemCommands = [
     { id: 'cmd1', name: '!block', desc: 'Divide o script em blocos (ex: !block 4)' },
     { id: 'cmd2', name: '!next', desc: 'Gera o próximo bloco' },
+    { id: 'cmd8', name: '!reload', desc: 'Audita, corrige e reinicia blocos' },
     { id: 'cmd3', name: '/start', desc: 'Inicia um novo script do zero' },
     { id: 'cmd4', name: '/next', desc: 'Continua a geração normal' },
     { id: 'cmd5', name: '/repeat', desc: 'Repete o último bloco' },
