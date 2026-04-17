@@ -31,6 +31,8 @@ interface SidebarProps {
   setApiKey: (key: string) => void;
   signOut: () => void;
   signIn: () => void;
+  deferredPrompt?: any;
+  setDeferredPrompt?: (prompt: any) => void;
 }
 
 const Sidebar = React.memo(({
@@ -48,11 +50,22 @@ const Sidebar = React.memo(({
   apiKey,
   setApiKey,
   signOut,
-  signIn
+  signIn,
+  deferredPrompt,
+  setDeferredPrompt
 }: SidebarProps) => {
   const [showApiInput, setShowApiInput] = React.useState(false);
   const navigate = useNavigate();
   const isAdmin = user?.email === 'soparonosk37@gmail.com';
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt?.(null);
+    }
+  };
 
   return (
     <motion.aside
@@ -179,6 +192,16 @@ const Sidebar = React.memo(({
 
         {/* Bottom Section: API Key & Sign Out */}
         <div className="mt-auto pt-4 border-t border-white/10 space-y-2">
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallClick}
+              className="flex items-center gap-2 w-full p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-all text-xs font-bold border border-blue-500/20 mb-2 shadow-lg shadow-black/20"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              <span>INSTALAR APP</span>
+            </button>
+          )}
+
           {isAdmin && (
             <button
               onClick={() => navigate('/home')}

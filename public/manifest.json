@@ -1,6 +1,6 @@
 {
-  "name": "Fluxion Copilot",
-  "short_name": "Fluxion",
+  "name": "BloxScript AI",
+  "short_name": "BloxScript",
   "description": "IA especialista em scripts Luau para Roblox",
   "start_url": "/",
   "display": "standalone",

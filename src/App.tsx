@@ -56,6 +56,7 @@ export default function App() {
   const [isBlockMode, setIsBlockMode] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -72,6 +73,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gemini_api_key', apiKey);
   }, [apiKey]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -422,6 +436,8 @@ export default function App() {
               setApiKey={setApiKey}
               signOut={signOut}
               signIn={signIn}
+              deferredPrompt={deferredPrompt}
+              setDeferredPrompt={setDeferredPrompt}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 z-10">
