@@ -10,24 +10,31 @@ import {
   Search, 
   BookOpen, 
   Info, 
-  ChevronDown 
+  ChevronDown,
+  Blocks,
+  CodeXml
 } from 'lucide-react';
 import { cn } from '../types';
+import CodeCombinerModal from './CodeCombinerModal';
 
 import { ThinkingLevel } from "@google/genai";
 
 interface ChatInputProps {
-  onSend: (text: string, images?: string[], thinkingLevel?: ThinkingLevel) => void;
+  onSend: (text: string, images?: string[], thinkingLevel?: ThinkingLevel, isBlockMode?: boolean) => void;
   isGenerating: boolean;
   initialValue?: string;
   savedScripts?: {id: string, name: string, content: string}[];
+  isBlockMode: boolean;
+  setIsBlockMode: (val: boolean) => void;
 }
 
 const ChatInput = React.memo(({ 
   onSend, 
   isGenerating,
   initialValue = '',
-  savedScripts = []
+  savedScripts = [],
+  isBlockMode,
+  setIsBlockMode
 }: ChatInputProps) => {
   const [input, setInput] = useState(initialValue);
   const [images, setImages] = useState<string[]>([]);
@@ -35,6 +42,8 @@ const ChatInput = React.memo(({
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [combinerModalOpen, setCombinerModalOpen] = useState(false);
+  const [combinerBlocks, setCombinerBlocks] = useState(2);
   const [aiMode, setAiMode] = useState<{id: ThinkingLevel, label: string, icon: any}>({
     id: ThinkingLevel.HIGH,
     label: 'Avançado (High)',
@@ -190,7 +199,12 @@ const ChatInput = React.memo(({
     e.preventDefault();
     if ((!input.trim() && images.length === 0) || isGenerating) return;
     
-    onSend(input, images, aiMode.id);
+    const blockMatch = input.match(/!block\s+(\d+)/i);
+    if (blockMatch) {
+      setCombinerBlocks(parseInt(blockMatch[1]));
+    }
+
+    onSend(input, images, aiMode.id, isBlockMode);
     setInput('');
     setImages([]);
   };
@@ -258,7 +272,16 @@ const ChatInput = React.memo(({
 
           <div className="flex-1 relative">
             {/* AI Mode Selector */}
-            <div className="absolute left-3 top-[-32px] z-20" ref={modeMenuRef}>
+            <div className="absolute left-3 top-[-32px] z-20 flex gap-2" ref={modeMenuRef}>
+              <button
+                type="button"
+                onClick={() => setCombinerModalOpen(true)}
+                className="flex items-center gap-1.5 px-2 py-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                title="Combinador de Blocos"
+              >
+                <CodeXml size={10} />
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowModeMenu(!showModeMenu)}
@@ -267,6 +290,18 @@ const ChatInput = React.memo(({
                 <aiMode.icon size={10} className="text-white/70" />
                 {aiMode.label}
                 <ChevronDown size={10} className={cn("transition-transform", showModeMenu && "rotate-180")} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsBlockMode(!isBlockMode)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-lg text-[9px] font-bold transition-all uppercase tracking-wider",
+                  isBlockMode ? "text-blue-400 border-blue-400/30" : "text-gray-400 hover:text-white"
+                )}
+              >
+                <Blocks size={10} />
+                {isBlockMode ? 'Modo Blocos: ON' : 'Modo Blocos: OFF'}
               </button>
 
               <AnimatePresence>
@@ -392,6 +427,12 @@ const ChatInput = React.memo(({
         accept=".lua,.txt,.json,.js,.ts" 
         multiple 
         className="hidden" 
+      />
+
+      <CodeCombinerModal 
+        isOpen={combinerModalOpen}
+        onClose={() => setCombinerModalOpen(false)}
+        initialBlocks={combinerBlocks}
       />
     </div>
   );

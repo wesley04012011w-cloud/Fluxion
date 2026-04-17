@@ -24,7 +24,10 @@ export const signIn = async () => {
     return await signInWithPopup(auth, googleProvider);
   } catch (error: any) {
     console.error("Sign in error:", error);
-    if (error.code === 'auth/popup-blocked') {
+    if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+      // Ignora o erro se o usuário fechou ou cancelou o popup
+      return;
+    } else if (error.code === 'auth/popup-blocked') {
       alert('O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site.');
     } else if (error.message?.includes('missing initial state') || error.code === 'auth/internal-error') {
       alert('Erro de autenticação no iframe. Por favor, tente abrir o app em uma nova aba para fazer login.');

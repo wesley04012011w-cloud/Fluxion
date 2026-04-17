@@ -121,7 +121,53 @@ interface MessageListProps {
   onSuggestionClick: (text: string) => void;
   onSaveScript: (name: string, content: string) => void;
   onDownloadScript: (name: string, content: string) => void;
+  isHeavyMode?: boolean;
 }
+
+const LoadingIndicator = ({ isHeavyMode }: { isHeavyMode?: boolean }) => {
+  const [stage, setStage] = React.useState(0);
+  const stages = [
+    { text: "Pensando...", icon: <Brain size={14} className="text-purple-400" /> },
+    { text: "Organizando módulos...", icon: <BookOpen size={14} className="text-blue-400" /> },
+    { text: "Construindo blocos...", icon: <Terminal size={14} className="text-green-400" /> },
+    { text: "Finalizando sistema...", icon: <Bot size={14} className="text-yellow-400" /> }
+  ];
+
+  React.useEffect(() => {
+    if (!isHeavyMode) return;
+    const interval = setInterval(() => {
+      setStage(prev => (prev + 1) % stages.length);
+    }, 2500); // Change stage every 2.5 seconds
+    return () => clearInterval(interval);
+  }, [isHeavyMode]);
+
+  return (
+    <div className="flex gap-3">
+      <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-white/20 text-white flex items-center justify-center animate-pulse">
+        {isHeavyMode ? stages[stage].icon : <Bot size={14} />}
+      </div>
+      <div className="bg-[#0a0a0a] border border-white/5 rounded-xl p-3 flex items-center justify-center min-w-[60px]">
+        {isHeavyMode ? (
+           <motion.div
+             key={stage}
+             initial={{ opacity: 0, y: 5 }}
+             animate={{ opacity: 1, y: 0 }}
+             exit={{ opacity: 0, y: -5 }}
+             className="text-xs font-mono text-gray-300 flex items-center gap-2"
+           >
+             {stages[stage].text}
+           </motion.div>
+        ) : (
+          <div className="flex gap-1">
+            <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const MessageList = React.memo(({ 
   messages, 
@@ -129,7 +175,8 @@ const MessageList = React.memo(({
   streamingText, 
   onSuggestionClick,
   onSaveScript,
-  onDownloadScript
+  onDownloadScript,
+  isHeavyMode
 }: MessageListProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -204,18 +251,7 @@ const MessageList = React.memo(({
       )}
 
       {isGenerating && !streamingText && (
-        <div className="flex gap-3">
-          <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-white/20 text-white flex items-center justify-center animate-pulse">
-            <Bot size={14} />
-          </div>
-          <div className="bg-[#0a0a0a] border border-white/5 rounded-xl p-3">
-            <div className="flex gap-1">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-            </div>
-          </div>
-        </div>
+        <LoadingIndicator isHeavyMode={isHeavyMode} />
       )}
       <div ref={messagesEndRef} className="h-4" />
     </div>

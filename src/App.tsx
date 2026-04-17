@@ -53,6 +53,7 @@ export default function App() {
   const [suggestion, setSuggestion] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBlockMode, setIsBlockMode] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
 
@@ -116,6 +117,8 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
       setChats(chatList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'chats');
     });
     return unsubscribe;
   }, [user]);
@@ -134,12 +137,14 @@ export default function App() {
         content: doc.data().content 
       }));
       setSavedScripts(scripts);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'scripts');
     });
     return unsubscribe;
   }, [user]);
 
   useEffect(() => {
-    if (!currentChatId) {
+    if (!user || !currentChatId) {
       setMessages([]);
       return;
     }
@@ -150,9 +155,11 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
       setMessages(msgList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`);
     });
     return unsubscribe;
-  }, [currentChatId]);
+  }, [currentChatId, user]);
 
   const createNewChat = async () => {
     if (!user) return;
@@ -160,6 +167,26 @@ export default function App() {
       const docRef = await addDoc(collection(db, 'chats'), {
         userId: user.uid,
         title: 'Novo Script',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setCurrentChatId(docRef.id);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'chats');
+    }
+  };
+
+  const createHeavyChat = async () => {
+    if (!user) {
+      await signIn();
+      return;
+    }
+
+    try {
+      const docRef = await addDoc(collection(db, 'chats'), {
+        userId: user.uid,
+        title: 'Modo Pesado',
+        mode: 'heavy',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -177,8 +204,8 @@ export default function App() {
       message: 'Tem certeza que deseja excluir este chat permanentemente?',
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, 'chats', id));
           if (currentChatId === id) setCurrentChatId(null);
+          await deleteDoc(doc(db, 'chats', id));
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `chats/${id}`);
         }
@@ -202,12 +229,11 @@ export default function App() {
     });
   }, []);
 
-  const handleSendMessage = useCallback(async (text: string, images?: string[]) => {
+  const handleSendMessage = useCallback(async (text: string, images?: string[], thinkingLevel?: string, useBlockMode?: boolean) => {
     if (!user) {
       try {
         await signIn();
-        return; // Stop here, user needs to send message again or we can retry automatically. 
-        // Better to just return and let them send now that they are logged in.
+        return; // Stop here, user needs to send message again 
       } catch (error) {
         console.error("Login failed:", error);
         return;
@@ -236,6 +262,7 @@ export default function App() {
     try {
       await addDoc(collection(db, `chats/${chatId}/messages`), {
         chatId,
+        userId: user.uid,
         role: 'user',
         content: text,
         images: images || [],
@@ -251,7 +278,13 @@ export default function App() {
         { role: 'user', content: text, images: images }
       ];
 
-      const result = await getGeminiResponse(allMessages, apiKey);
+      const result = await getGeminiResponse(
+        allMessages, 
+        apiKey, 
+        thinkingLevel as any, 
+        useBlockMode, 
+        chats.find(c => c.id === chatId)?.mode === 'heavy'
+      );
       let fullText = '';
       
       for await (const chunk of result) {
@@ -262,6 +295,7 @@ export default function App() {
 
       await addDoc(collection(db, `chats/${chatId}/messages`), {
         chatId,
+        userId: user.uid,
         role: 'model',
         content: fullText,
         createdAt: serverTimestamp()
@@ -379,6 +413,7 @@ export default function App() {
                 }
                 createNewChat();
               }}
+              createHeavyChat={createHeavyChat}
               deleteChat={deleteChat}
               savedScripts={savedScripts}
               deleteScript={deleteScript}
@@ -410,6 +445,7 @@ export default function App() {
                   onSuggestionClick={(text) => setSuggestion(text)}
                   onSaveScript={handleSaveScript}
                   onDownloadScript={handleDownloadScript}
+                  isHeavyMode={chats.find(c => c.id === currentChatId)?.mode === 'heavy'}
                 />
               </div>
 
@@ -418,6 +454,8 @@ export default function App() {
                 isGenerating={isGenerating} 
                 initialValue={suggestion}
                 savedScripts={savedScripts}
+                isBlockMode={isBlockMode}
+                setIsBlockMode={setIsBlockMode}
               />
             </main>
 

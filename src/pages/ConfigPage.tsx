@@ -47,6 +47,8 @@ export default function ConfigPage() {
     const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
       const userList = snapshot.docs.map(doc => doc.data() as AppUser);
       setUsers(userList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     // Listen to config
@@ -62,6 +64,8 @@ export default function ConfigPage() {
         });
       }
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'config/main');
     });
 
     return () => {

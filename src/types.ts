@@ -6,10 +6,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export enum ChatMode {
+  NORMAL = 'normal',
+  BLOCKS = 'blocks',
+  HEAVY = 'heavy'
+}
+
 export interface Chat {
   id: string;
   title: string;
   userId: string;
+  mode?: ChatMode;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -87,5 +94,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  if (operationType !== OperationType.LIST) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
