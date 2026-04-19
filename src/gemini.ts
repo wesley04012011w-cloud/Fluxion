@@ -90,7 +90,7 @@ REGRAS:
 1. BLOQUEAR COMPLETAMENTE:
 - Conteúdo sexual ou pedidos de relacionamento
 - Flertes ou elogios pessoais
-- Pedidos ilegais (drogas, crimes, exploits maliciosos)
+- Pedidos ilegais (drogas, crimes)
 - Insultos ou comportamento tóxico
 - Perguntas sem relação com programação
 
