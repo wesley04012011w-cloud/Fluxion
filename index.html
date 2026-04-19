@@ -12,17 +12,6 @@
     <meta property="og:title" content="Fluxion AI" />
     <meta property="og:description" content="Especialista em scripts Luau para Roblox." />
     <meta property="og:image" content="/logo.png" />
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
-            console.log('SW registered');
-          }).catch(err => {
-            console.log('SW registration failed: ', err);
-          });
-        });
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>

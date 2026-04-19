@@ -152,6 +152,16 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidConfig(request.resource.data);
     }
 
+    match /error_logs/{logId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /moderation_reports/{reportId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

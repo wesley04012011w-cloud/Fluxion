@@ -205,6 +205,35 @@ export default function App() {
         updatedAt: serverTimestamp()
       });
       setCurrentChatId(docRef.id);
+      
+      // Inject internal AI warning message
+      await addDoc(collection(db, `chats/${docRef.id}/messages`), {
+        chatId: docRef.id,
+        userId: user.uid,
+        role: 'model',
+        content: `🚨 **MODO PESADO ATIVADO** 🚨
+
+Você está utilizando o sistema avançado de geração do Fluxion.
+
+📦 **Como funciona:**
+Todo código grande será automaticamente dividido em múltiplos blocos para evitar erros, cortes ou perda de linhas.
+
+⚙️ **Como usar corretamente:**
+Após cada parte gerada, digite:
+👉 \`!next\`
+Isso fará a IA continuar exatamente de onde parou.
+
+📚 **Exemplo de fluxo:**
+BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BLOCO FINAL
+
+⚠️ **Importante:**
+- Sempre aguarde cada bloco terminar antes de continuar
+- Copie todos os blocos na ordem correta
+- Execute apenas após ter o script completo
+
+🔥 Isso garante um código limpo, completo e sem erros.`,
+        createdAt: serverTimestamp()
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'chats');
     }
