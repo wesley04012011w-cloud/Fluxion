@@ -32,6 +32,7 @@ const ADMIN_EMAIL = 'soparonosk37@gmail.com';
 export default function ConfigPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [errorLogs, setErrorLogs] = useState<any[]>([]);
   const [newKey, setNewKey] = useState('');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -57,7 +58,6 @@ export default function ConfigPage() {
       if (snapshot.exists()) {
         setConfig({ id: snapshot.id, ...snapshot.data() } as AppConfig);
       } else {
-        // Initialize config if it doesn't exist
         setDoc(configDoc, {
           geminiApiKeys: [],
           updatedAt: serverTimestamp()
@@ -68,9 +68,19 @@ export default function ConfigPage() {
       handleFirestoreError(error, OperationType.GET, 'config/main');
     });
 
+    // Listen to error logs
+    const logsQuery = query(collection(db, 'error_logs'), orderBy('createdAt', 'desc'));
+    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+      const logsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setErrorLogs(logsList);
+    }, (error) => {
+      console.warn("Could not fetch error logs:", error);
+    });
+
     return () => {
       unsubscribeUsers();
       unsubscribeConfig();
+      unsubscribeLogs();
     };
   }, [navigate]);
 
@@ -236,6 +246,64 @@ export default function ConfigPage() {
             </div>
           </motion.section>
         </div>
+
+        {/* Error Logs Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl mt-8"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-500/10 rounded-lg">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <h2 className="text-xl font-bold">Relatórios de Erros (Status da API)</h2>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full">
+              <span className="text-[10px] font-bold text-red-500 uppercase">{errorLogs.length} RELATÓRIOS</span>
+            </div>
+          </div>
+
+          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+            {errorLogs.length === 0 ? (
+              <p className="text-gray-600 text-sm italic py-4">Nenhum erro registrado. O sistema está estável 🚀</p>
+            ) : (
+              errorLogs.map((log) => (
+                <div key={log.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-sm font-bold text-red-400">Falha Interna {log.resolved ? '(Resolvido)' : ''}</h3>
+                      <p className="text-[10px] text-gray-400 mt-1">Usuário: {log.userEmail || 'Anônimo'} ({log.userId})</p>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-mono">
+                      {log.createdAt?.toDate().toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl mt-2 overflow-x-auto">
+                    <code className="text-xs text-red-300 font-mono whitespace-pre-wrap">
+                      {log.error}
+                    </code>
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-[10px] text-gray-500">ID do Chat Afetado: {log.chatId}</span>
+                    <button 
+                      onClick={() => {
+                        // Deletar o log resolvido
+                        const docRef = doc(db, 'error_logs', log.id);
+                        import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
+                      }}
+                      className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
+                    >
+                      LIMPAR / DELETAR
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </motion.section>
       </div>
 
       <style>{`

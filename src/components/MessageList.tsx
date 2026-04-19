@@ -122,6 +122,7 @@ interface MessageListProps {
   onSaveScript: (name: string, content: string) => void;
   onDownloadScript: (name: string, content: string) => void;
   isHeavyMode?: boolean;
+  isChatMode?: boolean;
 }
 
 const LoadingIndicator = ({ isHeavyMode }: { isHeavyMode?: boolean }) => {
@@ -176,7 +177,8 @@ const MessageList = React.memo(({
   onSuggestionClick,
   onSaveScript,
   onDownloadScript,
-  isHeavyMode
+  isHeavyMode,
+  isChatMode
 }: MessageListProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -202,26 +204,54 @@ const MessageList = React.memo(({
             }}
           />
         </motion.div>
-        <h3 className="text-lg md:text-xl font-bold">O que vamos programar hoje?</h3>
-        <p className="text-gray-500 text-xs md:text-sm">
-          Fluxion: A inteligência definitiva para desenvolvedores Roblox.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full mt-6">
-          {[
-            "Sistema de DataStore Pro",
-            "Script de Moedas/Líder",
-            "Como usar Task library?",
-            "Explique ModuleScripts"
-          ].map((suggestion) => (
-            <button
-              key={suggestion}
-              onClick={() => onSuggestionClick(suggestion)}
-              className="p-3 rounded-xl bg-[#0a0a0a] border border-white/5 hover:border-white/50 hover:bg-white/5 transition-all text-left text-xs font-medium"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
+        
+        {isChatMode ? (
+          <>
+            <h3 className="text-lg md:text-xl font-bold">E aí, qual a boa de hoje? ✌️</h3>
+            <p className="text-gray-500 text-xs md:text-sm">
+              Fluxion tá no "Modo Resenha". Bora trocar uma ideia!
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full mt-6">
+              {[
+                "Dá uma dica de jogo! 🎮",
+                "Preciso de uma ideia p/ script",
+                "Tem alguma piada de dev?",
+                "Me conta de um mistério"
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => onSuggestionClick(suggestion)}
+                  className="p-3 rounded-xl bg-[#0a0a0a] border border-white/5 hover:border-white/50 hover:bg-white/5 transition-all text-left text-xs font-medium"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <h3 className="text-lg md:text-xl font-bold">O que vamos programar hoje?</h3>
+            <p className="text-gray-500 text-xs md:text-sm">
+              Fluxion: A inteligência definitiva para desenvolvedores Roblox.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full mt-6">
+              {[
+                "Sistema de DataStore Pro",
+                "Script de Moedas/Líder",
+                "Como usar Task library?",
+                "Explique ModuleScripts"
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => onSuggestionClick(suggestion)}
+                  className="p-3 rounded-xl bg-[#0a0a0a] border border-white/5 hover:border-white/50 hover:bg-white/5 transition-all text-left text-xs font-medium"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   }

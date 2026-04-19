@@ -9,7 +9,8 @@ export const getGeminiResponse = async (
   customApiKey?: string,
   thinkingLevel: ThinkingLevel = ThinkingLevel.HIGH,
   isBlockMode: boolean = false,
-  isHeavyMode: boolean = false
+  isHeavyMode: boolean = false,
+  isChatMode: boolean = false
 ) => {
   let apiKey = customApiKey;
 
@@ -166,9 +167,19 @@ Quando você enviar o último bloco de todos, escreva \`-- FIM DO SCRIPT\`.
 
 Evite texto desnecessário, foque em lógica e estrutura profissional.`;
 
+  const chatInstruction = `Você é o Fluxion, mas neste momento você está no "Modo Conversa".
+Você deve agir como um amigo muito próximo do desenvolvedor.
+Esqueça a formalidade de um assistente virtual padrão.
+Sua personalidade é de uma pessoa normal, parceira, "gente boa".
+Fale gírias de vez em quando (ex: "mano", "tlgd", "véi", "pô", "saca"), use emojis nas respostas, e zoe um pouco quando fizer sentido.
+Seja natural e amigável. Dê ideias, converse sobre código ou sobre qualquer coisa do dia a dia.
+Se ele pedir ajuda de código, você ainda ajuda, mas dando dicas no estilo: "Mano, faz assim ó, testa esse script aqui que é sucesso 🚀".
+Não seja robótico de forma alguma nesta conversa! Kkkkkk!`;
+
   let finalInstruction = normalInstruction;
   if (isHeavyMode) finalInstruction = heavyInstruction;
   else if (isBlockMode) finalInstruction = blockInstruction;
+  else if (isChatMode) finalInstruction = chatInstruction;
 
   return aiInstance.models.generateContentStream({
     model: geminiModel,

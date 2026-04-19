@@ -210,6 +210,26 @@ export default function App() {
     }
   };
 
+  const createConversationChat = async () => {
+    if (!user) {
+      await signIn();
+      return;
+    }
+
+    try {
+      const docRef = await addDoc(collection(db, 'chats'), {
+        userId: user.uid,
+        title: 'Resenha (Modo Conversa)',
+        mode: 'chat',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setCurrentChatId(docRef.id);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'chats');
+    }
+  };
+
   const deleteChat = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setConfirmModal({
@@ -292,12 +312,17 @@ export default function App() {
         { role: 'user', content: text, images: images }
       ];
 
+      const currentChat = chats.find(c => c.id === chatId);
+      const isHeavy = currentChat?.mode === 'heavy';
+      const isChatMode = currentChat?.mode === 'chat';
+
       const result = await getGeminiResponse(
         allMessages, 
         apiKey, 
         thinkingLevel as any, 
         useBlockMode, 
-        chats.find(c => c.id === chatId)?.mode === 'heavy'
+        isHeavy,
+        isChatMode
       );
       let fullText = '';
       
@@ -317,12 +342,35 @@ export default function App() {
 
       setIsGenerating(false);
       setStreamingText('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       setIsGenerating(false);
       setStreamingText('');
+      
+      // Error Reporting System
+      try {
+        await addDoc(collection(db, 'error_logs'), {
+          userId: user.uid,
+          userEmail: user.email,
+          error: error instanceof Error ? error.message : String(error),
+          chatId: chatId,
+          createdAt: serverTimestamp(),
+          resolved: false,
+          model: 'gemini-3-flash-preview'
+        });
+        
+        await addDoc(collection(db, `chats/${chatId}/messages`), {
+          chatId,
+          userId: user.uid,
+          role: 'model',
+          content: `❌ Ops, ocorreu um erro interno de conexão ou de API ao gerar a resposta.\n\nUm relatório detalhado foi enviado ao administrador do sistema para averiguação. Tente enviar de novo ou aguarde o suporte analisar o problema.`,
+          createdAt: serverTimestamp()
+        });
+      } catch(logError) {
+        console.error("Failed to log error to firestore", logError);
+      }
     }
-  }, [user, currentChatId, messages, apiKey]);
+  }, [user, currentChatId, messages, apiKey, chats]);
 
   const handleSaveScript = async (name: string, content: string) => {
     if (!user) {
@@ -428,6 +476,7 @@ export default function App() {
                 createNewChat();
               }}
               createHeavyChat={createHeavyChat}
+              createConversationChat={createConversationChat}
               deleteChat={deleteChat}
               savedScripts={savedScripts}
               deleteScript={deleteScript}
@@ -462,6 +511,7 @@ export default function App() {
                   onSaveScript={handleSaveScript}
                   onDownloadScript={handleDownloadScript}
                   isHeavyMode={chats.find(c => c.id === currentChatId)?.mode === 'heavy'}
+                  isChatMode={chats.find(c => c.id === currentChatId)?.mode === 'chat'}
                 />
               </div>
 

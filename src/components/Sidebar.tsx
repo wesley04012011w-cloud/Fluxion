@@ -23,6 +23,7 @@ interface SidebarProps {
   setCurrentChatId: (id: string) => void;
   createNewChat: () => void;
   createHeavyChat?: () => void;
+  createConversationChat?: () => void;
   deleteChat: (id: string, e: React.MouseEvent) => void;
   savedScripts: {id: string, name: string, content: string}[];
   deleteScript: (id: string, e: React.MouseEvent) => void;
@@ -43,6 +44,7 @@ const Sidebar = React.memo(({
   setCurrentChatId,
   createNewChat,
   createHeavyChat,
+  createConversationChat,
   deleteChat,
   savedScripts,
   deleteScript,
@@ -101,16 +103,24 @@ const Sidebar = React.memo(({
 
         <button
           onClick={() => {
-            // Functionality for setting heavy mode string directly will be implemented down the line
-            // for now, we just pass another prop or dispatch event.
-            // A better way is to pass a prop 'createHeavyChat' from App.tsx.
             createHeavyChat?.();
             if (window.innerWidth < 1024) setIsSidebarOpen(false);
           }}
-          className="flex items-center gap-2 w-full p-2.5 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 font-bold transition-all mb-4 shadow-lg shadow-black/20 text-xs"
+          className="flex items-center gap-2 w-full p-2.5 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 font-bold transition-all mb-2 shadow-lg shadow-black/20 text-xs"
         >
           <Plus size={16} />
           <span>MODO PESADO</span>
+        </button>
+
+        <button
+          onClick={() => {
+            createConversationChat?.();
+            if (window.innerWidth < 1024) setIsSidebarOpen(false);
+          }}
+          className="flex items-center gap-2 w-full p-2.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 font-bold transition-all mb-4 shadow-lg shadow-black/20 text-xs"
+        >
+          <MessageSquare size={16} />
+          <span>MODO RESENHA</span>
         </button>
 
         <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-1">
