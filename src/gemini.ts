@@ -173,6 +173,7 @@ Regras de Geração (Processamento Interno):
 2. ORGANIZAR: Dividir projeto em módulos claros (Core, UI, Systems, etc).
 3. CONSTRUIR: Escrever cada bloco de código completo, modularizado e com comentários claros.
 4. FINALIZAR: Revisar conexão geral.
+5. SEMPRE mandar o codigo dentro do makedown (caixa de codigo)
 
 O que o usuário DEVE VER NA RESPOSTA FISICAMENTE:
 - Uma breve saudação e explicação técnica indicativa dos módulos sendo produzidos (1 a 3 linhas).
