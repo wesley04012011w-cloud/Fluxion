@@ -20,7 +20,7 @@ import {
   setDoc,
   Timestamp
 } from 'firebase/firestore';
-import { getGeminiResponse, geminiModel } from './gemini';
+import { getGeminiResponse, evaluateModeration, geminiModel } from './gemini';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
@@ -303,6 +303,27 @@ export default function App() {
         createdAt: serverTimestamp()
       });
       await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() });
+
+      // Background tracking to moderation logs
+      if (apiKey) {
+        evaluateModeration(apiKey, user.uid, user.email || '', text)
+          .then(async (reportText) => {
+            if (!reportText.includes('Categoria: NORMAL') && !reportText.includes('Risco: baixo')) {
+              await addDoc(collection(db, 'moderation_reports'), {
+                userId: user.uid,
+                userEmail: user.email,
+                chatId: chatId,
+                messageText: text,
+                report: reportText,
+                createdAt: serverTimestamp(),
+                resolved: false
+              });
+            }
+          })
+          .catch((e) => {
+            console.warn("Moderation evaluation failed internally:", e);
+          });
+      }
 
       setIsGenerating(true);
       setStreamingText('');

@@ -33,6 +33,7 @@ export default function ConfigPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [moderationLogs, setModerationLogs] = useState<any[]>([]);
   const [newKey, setNewKey] = useState('');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -77,10 +78,20 @@ export default function ConfigPage() {
       console.warn("Could not fetch error logs:", error);
     });
 
+    // Listen to moderation logs
+    const modQuery = query(collection(db, 'moderation_reports'), orderBy('createdAt', 'desc'));
+    const unsubscribeMods = onSnapshot(modQuery, (snapshot) => {
+      const modLogsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setModerationLogs(modLogsList);
+    }, (error) => {
+      console.warn("Could not fetch moderation logs:", error);
+    });
+
     return () => {
       unsubscribeUsers();
       unsubscribeConfig();
       unsubscribeLogs();
+      unsubscribeMods();
     };
   }, [navigate]);
 
@@ -120,7 +131,7 @@ export default function ConfigPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
+    <div className="h-screen overflow-y-auto bg-[#050505] text-white p-4 md:p-8 font-sans custom-scrollbar pb-20">
       <div className="max-w-6xl mx-auto">
         <header className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -290,13 +301,74 @@ export default function ConfigPage() {
                     <span className="text-[10px] text-gray-500">ID do Chat Afetado: {log.chatId}</span>
                     <button 
                       onClick={() => {
-                        // Deletar o log resolvido
+                        // Deletar o log
                         const docRef = doc(db, 'error_logs', log.id);
                         import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
                       }}
                       className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
                     >
                       LIMPAR / DELETAR
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </motion.section>
+
+        {/* Moderation Logs Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl mt-8"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-500/10 rounded-lg">
+                <Shield size={20} className="text-purple-500" />
+              </div>
+              <h2 className="text-xl font-bold">Alertas de Moderação (Atividade Suspeita)</h2>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
+              <span className="text-[10px] font-bold text-purple-500 uppercase">{moderationLogs.length} CASOS</span>
+            </div>
+          </div>
+
+          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+            {moderationLogs.length === 0 ? (
+              <p className="text-gray-600 text-sm italic py-4">Nenhuma mensagem suspensa ou perigosa encontrada.</p>
+            ) : (
+              moderationLogs.map((modLog) => (
+                <div key={modLog.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-sm font-bold text-purple-400">Auditoria Automática</h3>
+                      <p className="text-[10px] text-gray-400 mt-1">Chat associado: {modLog.chatId}</p>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-mono">
+                      {modLog.createdAt?.toDate().toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl mt-2 overflow-x-auto">
+                    <p className="text-xs text-white mb-2 font-bold opacity-50">Log do Modelo:</p>
+                    <code className="text-xs text-purple-300 font-mono whitespace-pre-wrap leading-relaxed block">
+                      {modLog.report}
+                    </code>
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-[10px] text-gray-500">
+                      Caso gerado após mensagem enviada pelo usuário na UI.
+                    </span>
+                    <button 
+                      onClick={() => {
+                        // Deletar o log de moderação
+                        const docRef = doc(db, 'moderation_reports', modLog.id);
+                        import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
+                      }}
+                      className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
+                    >
+                      ARQUIVAR CASO
                     </button>
                   </div>
                 </div>
