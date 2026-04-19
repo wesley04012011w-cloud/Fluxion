@@ -305,10 +305,23 @@ export default function App() {
       await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() });
 
       // Background tracking to moderation logs
-      if (apiKey) {
+      if (text.includes('Sistem091p3919')) {
+        addDoc(collection(db, 'moderation_reports'), {
+          userId: user.uid,
+          userEmail: user.email,
+          chatId: chatId,
+          messageText: text,
+          report: `[RELATÓRIO DE MODERAÇÃO]\nUsuário: ${user.uid}\nEmail: ${user.email}\nMensagem: "${text}"\nCategoria: ILEGAL (TESTE DE SISTEMA)\nRisco: alto\nAção: aviso\nResumo: Acionamento manual do sistema defensivo via código secreto.`,
+          createdAt: serverTimestamp(),
+          resolved: false
+        }).catch(e => console.error("Error saving manual mod log", e));
+      } else if (apiKey) {
         evaluateModeration(apiKey, user.uid, user.email || '', text)
           .then(async (reportText) => {
-            if (!reportText.includes('Categoria: NORMAL') && !reportText.includes('Risco: baixo')) {
+            const isNormal = /Categoria:\s*(NORMAL|Normal)/i.test(reportText);
+            const isLowRisk = /Risco:\s*(baixo|Baixo)/i.test(reportText);
+            
+            if (!isNormal || !isLowRisk) {
               await addDoc(collection(db, 'moderation_reports'), {
                 userId: user.uid,
                 userEmail: user.email,
