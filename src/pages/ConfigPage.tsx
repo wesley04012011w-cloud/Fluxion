@@ -24,7 +24,7 @@ import {
   orderBy,
   Timestamp
 } from 'firebase/firestore';
-import { AppUser, AppConfig, OperationType, handleFirestoreError } from '../types';
+import { AppUser, AppConfig, OperationType, handleFirestoreError, cn } from '../types';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -139,6 +139,33 @@ export default function ConfigPage() {
     }
   };
 
+  const selectApiKey = async (index: number) => {
+    if (!config) return;
+    try {
+      // Alternar seleção: se clicar na já selecionada, desativa a seleção manual (volta para rodízio)
+      const newIndex = config.selectedApiKeyIndex === index ? -1 : index;
+      await updateDoc(doc(db, 'config', 'main'), {
+        selectedApiKeyIndex: newIndex,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+    }
+  };
+
+  const toggleAutoSelection = async () => {
+    if (!config) return;
+    try {
+      const newAutoMode = config.autoApiKeySelection === false; // Toggle
+      await updateDoc(doc(db, 'config', 'main'), {
+        autoApiKeySelection: newAutoMode,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -175,11 +202,30 @@ export default function ConfigPage() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
           >
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-white/10 rounded-lg">
-                <Key size={20} />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <Key size={20} />
+                </div>
+                <h2 className="text-xl font-bold">Gerenciar API Keys</h2>
               </div>
-              <h2 className="text-xl font-bold">Gerenciar API Keys</h2>
+              
+              <div className="flex items-center gap-3 bg-black/40 p-1.5 px-3 rounded-2xl border border-white/5">
+                <span className={cn("text-[10px] font-bold uppercase tracking-widest transition-colors", config?.autoApiKeySelection === false ? "text-white" : "text-gray-600")}>Manual</span>
+                <button 
+                  onClick={toggleAutoSelection}
+                  className={cn(
+                    "w-10 h-5 rounded-full relative transition-all duration-300",
+                    config?.autoApiKeySelection !== false ? "bg-white" : "bg-gray-800"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-3 h-3 rounded-full transition-all duration-300",
+                    config?.autoApiKeySelection !== false ? "right-1 bg-black" : "left-1 bg-white"
+                  )} />
+                </button>
+                <span className={cn("text-[10px] font-bold uppercase tracking-widest transition-colors", config?.autoApiKeySelection !== false ? "text-white" : "text-gray-600")}>Auto</span>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -201,17 +247,40 @@ export default function ConfigPage() {
               </div>
 
               <div className="space-y-2 mt-6">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Chaves Ativas</label>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center justify-between">
+                  Chaves Ativas
+                  <span className="text-[9px] text-gray-600 lowercase font-normal italic">clique para isolar uma chave</span>
+                </label>
                 {config?.geminiApiKeys.length === 0 ? (
                   <p className="text-gray-600 text-sm italic py-4">Nenhuma chave configurada.</p>
                 ) : (
                   config?.geminiApiKeys.map((key, index) => (
-                    <div key={`key-${index}`} className="flex items-center justify-between bg-black/40 border border-white/5 p-3 rounded-xl group">
-                      <code className="text-xs text-gray-400 font-mono">
-                        {key.substring(0, 8)}••••••••••••{key.substring(key.length - 4)}
-                      </code>
+                    <div 
+                      key={`key-${index}`} 
+                      className={cn(
+                        "flex items-center justify-between bg-black/40 border p-3 rounded-xl group transition-all cursor-pointer",
+                        config.selectedApiKeyIndex === index ? "border-green-500/50 bg-green-500/5 shadow-[0_0_15px_rgba(34,197,94,0.05)]" : "border-white/5 hover:border-white/10"
+                      )}
+                      onClick={() => selectApiKey(index)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full",
+                          config.selectedApiKeyIndex === index ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-gray-700"
+                        )} />
+                        <code className={cn(
+                          "text-xs font-mono transition-colors",
+                          config.selectedApiKeyIndex === index ? "text-white" : "text-gray-400"
+                        )}>
+                          {key.substring(0, 8)}••••••••••••{key.substring(key.length - 4)}
+                          {config.selectedApiKeyIndex === index && <span className="ml-2 text-[9px] text-green-500 font-black uppercase tracking-tighter">Ativa</span>}
+                        </code>
+                      </div>
                       <button 
-                        onClick={() => removeApiKey(index)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeApiKey(index);
+                        }}
                         className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
                       >
                         <Trash2 size={16} />

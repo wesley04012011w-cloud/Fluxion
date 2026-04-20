@@ -13,6 +13,8 @@ export const getGeminiResponse = async (
   isChatMode: boolean = false
 ) => {
   let availableKeys: string[] = [];
+  let selectedIndex = -1;
+  let autoMode = true;
   
   if (customApiKey) {
     availableKeys = [customApiKey];
@@ -20,28 +22,47 @@ export const getGeminiResponse = async (
     try {
       const configDoc = await getDoc(doc(db, 'config', 'main'));
       if (configDoc.exists()) {
-        availableKeys = configDoc.data().geminiApiKeys || [];
+        const data = configDoc.data();
+        availableKeys = data.geminiApiKeys || [];
+        selectedIndex = data.selectedApiKeyIndex ?? -1;
+        autoMode = data.autoApiKeySelection !== false; // Default to true
       }
     } catch (error) {
       console.error("Error fetching keys from Firestore:", error);
     }
-    
-    // Add environment key as fallback
-    if (process.env.GEMINI_API_KEY && !availableKeys.includes(process.env.GEMINI_API_KEY)) {
-      availableKeys.push(process.env.GEMINI_API_KEY);
-    }
   }
 
   if (availableKeys.length === 0) {
-    throw new Error("API Key não encontrada. Por favor, configure sua chave no menu lateral ou peça ao administrador para configurar as chaves globais.");
+    throw new Error("ERRO CRITICAL: Nenhuma API Key sua foi configurada. Vá no Painel Admin e adicione suas chaves. O App não usará chaves de demonstração.");
   }
 
-  // Shuffle keys to distribute load
-  const shuffledKeys = [...availableKeys].sort(() => Math.random() - 0.5);
+  // Determine key order and usage
+  let prioritizedKeys: string[];
+  
+  if (!autoMode) {
+    if (selectedIndex >= 0 && selectedIndex < availableKeys.length) {
+      // MANUAL MODE: ONLY use the selected key, no rotation/fallback
+      prioritizedKeys = [availableKeys[selectedIndex]];
+    } else {
+      // MANUAL MODE BUT NO KEY SELECTED: Fail immediately
+      throw new Error("MODO MANUAL ATIVADO: Você precisa selecionar uma chave na lista abaixo para que o app funcione, ou ativar o Modo Automático.");
+    }
+  } else {
+    // AUTO MODE
+    if (selectedIndex >= 0 && selectedIndex < availableKeys.length) {
+      // AUTO MODE with priority: Selected key first, then others as fallback
+      const selectedKey = availableKeys[selectedIndex];
+      const others = availableKeys.filter((_, i) => i !== selectedIndex).sort(() => Math.random() - 0.5);
+      prioritizedKeys = [selectedKey, ...others];
+    } else {
+      // ABSOLUTE AUTO: Standard rotation
+      prioritizedKeys = [...availableKeys].sort(() => Math.random() - 0.5);
+    }
+  }
 
   let lastError: any = null;
 
-  for (const apiKey of shuffledKeys) {
+  for (const apiKey of prioritizedKeys) {
     try {
       const aiInstance = new GoogleGenAI({ apiKey });
       
@@ -76,19 +97,23 @@ export const getGeminiResponse = async (
       const lastMessageParts: any[] = [{ text: lastMessage.content }];
       if (lastMessage.images && lastMessage.images.length > 0) {
         lastMessageParts.push(...lastMessage.images.map(img => {
-          const [mimeTypePart, data] = img.split(';base64,');
-          return {
-            inlineData: {
-              mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
-              data: data
-            }
-          };
-        }));
+          const parts_img = img.split(';base64,');
+          if (parts_img.length === 2) {
+            const mimeTypePart = parts_img[0];
+            const data = parts_img[1];
+            return {
+              inlineData: {
+                mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
+                data: data
+              }
+            };
+          }
+          return { text: "" };
+        }).filter(p => !('text' in p) || p.text !== ""));
       }
 
       const contents = [...history, { role: 'user', parts: lastMessageParts }];
 
-      // ... keep instructions as is ...
       const baseInstruction = `CONFIGURAÇÃO DE SEGURANÇA — FLUXION
 Você é uma IA focada exclusivamente em programação e desenvolvimento (Roblox/Luau).
 
@@ -218,21 +243,34 @@ Não seja robótico de forma alguma nesta conversa! Kkkkkk!`;
       else if (isBlockMode) finalInstruction = blockInstruction;
       else if (isChatMode) finalInstruction = chatInstruction;
 
-      return await aiInstance.models.generateContentStream({
+      const stream = await aiInstance.models.generateContentStream({
         model: geminiModel,
         contents: contents,
         config: {
           systemInstruction: finalInstruction,
-          thinkingConfig: { thinkingLevel }
+          // thinkingConfig removed to avoid 400 errors
         }
       });
+
+      // Test stream activation
+      const iterator = stream[Symbol.asyncIterator]();
+      const firstChunk = await iterator.next();
+      
+      if (firstChunk.done) return stream;
+
+      async function* wrappedStream() {
+        yield firstChunk.value;
+        let res = await iterator.next();
+        while(!res.done) {
+          yield res.value;
+          res = await iterator.next();
+        }
+      }
+
+      return wrappedStream();
     } catch (err: any) {
       console.warn(`Key failed, trying next... Error: ${err.message}`);
       lastError = err;
-      
-      // If it's not a quota/rate limit error, we might want to stop, 
-      // but usually we should try all keys just in case.
-      // 429: Too Many Requests / Quota exceeded
     }
   }
 

@@ -34,6 +34,8 @@ export interface AppUser {
 export interface AppConfig {
   id: string;
   geminiApiKeys: string[];
+  selectedApiKeyIndex?: number;
+  autoApiKeySelection?: boolean;
   updatedAt: Timestamp;
 }
 
