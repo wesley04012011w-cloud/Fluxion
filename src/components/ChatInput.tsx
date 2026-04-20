@@ -57,7 +57,7 @@ const ChatInput = React.memo(({
   const modeMenuRef = useRef<HTMLDivElement>(null);
 
   const aiModes = [
-    { id: ThinkingLevel.OFF, label: 'Rápido (Off)', icon: Info },
+    { id: ThinkingLevel.MINIMAL, label: 'Rápido (Minimal)', icon: Info },
     { id: ThinkingLevel.LOW, label: 'Básico (Low)', icon: BookOpen },
     { id: ThinkingLevel.MEDIUM, label: 'Médio (Medium)', icon: Search },
     { id: ThinkingLevel.HIGH, label: 'Avançado (High)', icon: Brain },

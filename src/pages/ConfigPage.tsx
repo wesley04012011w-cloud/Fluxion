@@ -11,6 +11,7 @@ import {
   Circle
 } from 'lucide-react';
 import { db, auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
   collection, 
   query, 
@@ -36,13 +37,29 @@ export default function ConfigPage() {
   const [moderationLogs, setModerationLogs] = useState<any[]>([]);
   const [newKey, setNewKey] = useState('');
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (auth.currentUser?.email !== ADMIN_EMAIL) {
-      navigate('/');
-      return;
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        navigate('/');
+        return;
+      }
+
+      if (user.email !== ADMIN_EMAIL) {
+        navigate('/');
+        return;
+      }
+      
+      setAuthChecked(true);
+    });
+
+    return unsubscribe;
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!authChecked) return;
 
     // Listen to active users
     const usersQuery = query(collection(db, 'users'), orderBy('lastActive', 'desc'));
@@ -93,7 +110,7 @@ export default function ConfigPage() {
       unsubscribeLogs();
       unsubscribeMods();
     };
-  }, [navigate]);
+  }, [authChecked]);
 
   const addApiKey = async () => {
     if (!newKey.trim() || !config) return;

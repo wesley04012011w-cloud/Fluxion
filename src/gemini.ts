@@ -12,78 +12,84 @@ export const getGeminiResponse = async (
   isHeavyMode: boolean = false,
   isChatMode: boolean = false
 ) => {
-  let apiKey = customApiKey;
-
-  if (!apiKey) {
+  let availableKeys: string[] = [];
+  
+  if (customApiKey) {
+    availableKeys = [customApiKey];
+  } else {
     try {
-      // Try to get keys from Firestore
       const configDoc = await getDoc(doc(db, 'config', 'main'));
       if (configDoc.exists()) {
-        const keys = configDoc.data().geminiApiKeys || [];
-        if (keys.length > 0) {
-          // Simple rotation: pick a random key
-          apiKey = keys[Math.floor(Math.random() * keys.length)];
-        }
+        availableKeys = configDoc.data().geminiApiKeys || [];
       }
     } catch (error) {
       console.error("Error fetching keys from Firestore:", error);
     }
+    
+    // Add environment key as fallback
+    if (process.env.GEMINI_API_KEY && !availableKeys.includes(process.env.GEMINI_API_KEY)) {
+      availableKeys.push(process.env.GEMINI_API_KEY);
+    }
   }
 
-  if (!apiKey) {
-    apiKey = process.env.GEMINI_API_KEY;
-  }
-  
-  if (!apiKey) {
+  if (availableKeys.length === 0) {
     throw new Error("API Key não encontrada. Por favor, configure sua chave no menu lateral ou peça ao administrador para configurar as chaves globais.");
   }
 
-  const aiInstance = new GoogleGenAI({ apiKey });
-  
-  const history = messages.slice(0, -1).map(m => {
-    const parts: any[] = [{ text: m.content }];
-    if (m.images && m.images.length > 0) {
-      m.images.forEach(img => {
-        try {
-          const parts_img = img.split(';base64,');
-          if (parts_img.length === 2) {
-            const mimeTypePart = parts_img[0];
-            const data = parts_img[1];
-            parts.push({
-              inlineData: {
-                mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
-                data: data
+  // Shuffle keys to distribute load
+  const shuffledKeys = [...availableKeys].sort(() => Math.random() - 0.5);
+
+  let lastError: any = null;
+
+  for (const apiKey of shuffledKeys) {
+    try {
+      const aiInstance = new GoogleGenAI({ apiKey });
+      
+      const history = messages.slice(0, -1).map(m => {
+        const parts: any[] = [{ text: m.content }];
+        if (m.images && m.images.length > 0) {
+          m.images.forEach(img => {
+            try {
+              const parts_img = img.split(';base64,');
+              if (parts_img.length === 2) {
+                const mimeTypePart = parts_img[0];
+                const data = parts_img[1];
+                parts.push({
+                  inlineData: {
+                    mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
+                    data: data
+                  }
+                });
               }
-            });
-          }
-        } catch (e) {
-          console.error('Error parsing image for history:', e);
+            } catch (e) {
+              console.error('Error parsing image for history:', e);
+            }
+          });
         }
+        return {
+          role: m.role,
+          parts: parts
+        };
       });
-    }
-    return {
-      role: m.role,
-      parts: parts
-    };
-  });
-  
-  const lastMessage = messages[messages.length - 1];
-  const lastMessageParts: any[] = [{ text: lastMessage.content }];
-  if (lastMessage.images && lastMessage.images.length > 0) {
-    lastMessageParts.push(...lastMessage.images.map(img => {
-      const [mimeTypePart, data] = img.split(';base64,');
-      return {
-        inlineData: {
-          mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
-          data: data
-        }
-      };
-    }));
-  }
+      
+      const lastMessage = messages[messages.length - 1];
+      const lastMessageParts: any[] = [{ text: lastMessage.content }];
+      if (lastMessage.images && lastMessage.images.length > 0) {
+        lastMessageParts.push(...lastMessage.images.map(img => {
+          const [mimeTypePart, data] = img.split(';base64,');
+          return {
+            inlineData: {
+              mimeType: mimeTypePart.includes(':') ? mimeTypePart.split(':')[1] : 'image/jpeg',
+              data: data
+            }
+          };
+        }));
+      }
 
-  const contents = [...history, { role: 'user', parts: lastMessageParts }];
+      const contents = [...history, { role: 'user', parts: lastMessageParts }];
 
-  const baseInstruction = `CONFIGURAÇÃO DE SEGURANÇA — FLUXION
+      // ... keep instructions as is ...
+      const baseInstruction = `CONFIGURAÇÃO DE SEGURANÇA — FLUXION
 Você é uma IA focada exclusivamente em programação e desenvolvimento (Roblox/Luau).
 
 REGRAS:
@@ -118,10 +124,10 @@ Você é o Fluxion, a inteligência definitiva para desenvolvedores Roblox.
 Foco em gerar código Luau limpo, funcional e pronto para produção.
 Sempre use as melhores práticas do Roblox (Task library, ModuleScripts, etc.).`;
 
-  const normalInstruction = `${baseInstruction}
+      const normalInstruction = `${baseInstruction}
 Você é um assistente focado em ajudar com programação Roblox (Luau). Responda às perguntas e gere código conforme solicitado, de forma clara e direta.`;
 
-  const blockInstruction = `${baseInstruction}
+      const blockInstruction = `${baseInstruction}
 Você NÃO é um assistente de chat normal. Você deve seguir estritamente o sistema de comandos e as regras de geração de blocos.
 
 ========================
@@ -161,7 +167,7 @@ Quando o script inteiro (todos os blocos) estiver concluído, escreva:
 -- FIM DO SCRIPT
 Então PARE. NÃO gere mais nada depois disso.`;
 
-  const heavyInstruction = `Você é um gerador de código avançado com pipeline estruturado em Modo Pesado.
+      const heavyInstruction = `Você é um gerador de código avançado com pipeline estruturado em Modo Pesado.
 
 Seu objetivo é criar códigos grandes (800–1500+ linhas) de forma organizada, SEM truncar.
 O Usuário verá uma interface especial indicando que você está pensando, organizando, construindo e finalizando.
@@ -198,7 +204,7 @@ Quando você enviar o último bloco de todos, escreva \`-- FIM DO SCRIPT\`.
 
 Evite texto desnecessário, foque em lógica e estrutura profissional.`;
 
-  const chatInstruction = `Você é o Fluxion, mas neste momento você está no "Modo Conversa".
+      const chatInstruction = `Você é o Fluxion, mas neste momento você está no "Modo Conversa".
 Você deve agir como um amigo muito próximo do desenvolvedor.
 Esqueça a formalidade de um assistente virtual padrão.
 Sua personalidade é de uma pessoa normal, parceira, "gente boa".
@@ -207,19 +213,31 @@ Seja natural e amigável. Dê ideias, converse sobre código ou sobre qualquer c
 Se ele pedir ajuda de código, você ainda ajuda, mas dando dicas no estilo: "Mano, faz assim ó, testa esse script aqui que é sucesso 🚀".
 Não seja robótico de forma alguma nesta conversa! Kkkkkk!`;
 
-  let finalInstruction = normalInstruction;
-  if (isHeavyMode) finalInstruction = heavyInstruction;
-  else if (isBlockMode) finalInstruction = blockInstruction;
-  else if (isChatMode) finalInstruction = chatInstruction;
+      let finalInstruction = normalInstruction;
+      if (isHeavyMode) finalInstruction = heavyInstruction;
+      else if (isBlockMode) finalInstruction = blockInstruction;
+      else if (isChatMode) finalInstruction = chatInstruction;
 
-  return aiInstance.models.generateContentStream({
-    model: geminiModel,
-    contents: contents,
-    config: {
-      systemInstruction: finalInstruction,
-      thinkingConfig: { thinkingLevel }
+      return await aiInstance.models.generateContentStream({
+        model: geminiModel,
+        contents: contents,
+        config: {
+          systemInstruction: finalInstruction,
+          thinkingConfig: { thinkingLevel }
+        }
+      });
+    } catch (err: any) {
+      console.warn(`Key failed, trying next... Error: ${err.message}`);
+      lastError = err;
+      
+      // If it's not a quota/rate limit error, we might want to stop, 
+      // but usually we should try all keys just in case.
+      // 429: Too Many Requests / Quota exceeded
     }
-  });
+  }
+
+  // If we reach here, all keys failed
+  throw lastError || new Error("Todas as chaves de API falharam ou atingiram a quota.");
 };
 
 export const evaluateModeration = async (apiKey: string, userId: string, userEmail: string, message: string) => {

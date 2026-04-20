@@ -27,7 +27,7 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
 import SaveScriptModal from './components/SaveScriptModal';
-import { Chat, Message, OperationType, handleFirestoreError } from './types';
+import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './types';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
@@ -334,7 +334,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() });
 
       // Background tracking to moderation logs
-      if (text.includes('Sistem091p3919')) {
+      const isManualTrigger = text.trim() === 'Sistem091p3919';
+      if (isManualTrigger) {
         addDoc(collection(db, 'moderation_reports'), {
           userId: user.uid,
           userEmail: user.email,
@@ -343,7 +344,12 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           report: `[RELATÓRIO DE MODERAÇÃO]\nUsuário: ${user.uid}\nEmail: ${user.email}\nMensagem: "${text}"\nCategoria: ILEGAL (TESTE DE SISTEMA)\nRisco: alto\nAção: aviso\nResumo: Acionamento manual do sistema defensivo via código secreto.`,
           createdAt: serverTimestamp(),
           resolved: false
-        }).catch(e => console.error("Error saving manual mod log", e));
+        }).then(() => {
+          console.log("Manual moderation report created successfully.");
+        }).catch(e => {
+          console.error("Error saving manual mod log:", e);
+          handleFirestoreError(e, OperationType.CREATE, 'moderation_reports');
+        });
       } else if (apiKey) {
         evaluateModeration(apiKey, user.uid, user.email || '', text)
           .then(async (reportText) => {
@@ -376,8 +382,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       ];
 
       const currentChat = chats.find(c => c.id === chatId);
-      const isHeavy = currentChat?.mode === 'heavy';
-      const isChatMode = currentChat?.mode === 'chat';
+      const isHeavy = currentChat?.mode === ChatMode.HEAVY;
+      const isChatMode = currentChat?.mode === ChatMode.CHAT;
 
       const result = await getGeminiResponse(
         allMessages, 
@@ -573,8 +579,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                   onSuggestionClick={(text) => setSuggestion(text)}
                   onSaveScript={handleSaveScript}
                   onDownloadScript={handleDownloadScript}
-                  isHeavyMode={chats.find(c => c.id === currentChatId)?.mode === 'heavy'}
-                  isChatMode={chats.find(c => c.id === currentChatId)?.mode === 'chat'}
+                  isHeavyMode={chats.find(c => c.id === currentChatId)?.mode === ChatMode.HEAVY}
+                  isChatMode={chats.find(c => c.id === currentChatId)?.mode === ChatMode.CHAT}
                 />
               </div>
 

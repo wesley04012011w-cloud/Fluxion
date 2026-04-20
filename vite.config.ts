@@ -13,12 +13,7 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         devOptions: {
-          enabled: false,
-        },
-        includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'],
-        workbox: {
-          navigateFallbackDenylist: [/^\/~oauth/],
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          enabled: true,
         },
         manifest: {
           name: "Fluxion AI",
@@ -27,13 +22,18 @@ export default defineConfig(({mode}) => {
           theme_color: "#2563eb",
           background_color: "#0F111A",
           display: "standalone",
-          orientation: "portrait",
-          scope: "/",
-          start_url: "/",
           icons: [
-            { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-            { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-            { src: '/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+            {
+              src: 'logo.png',
+              sizes: '192x192',
+              type: 'image/png'
+            },
+            {
+              src: 'logo.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
+            }
           ]
         }
       })

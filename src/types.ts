@@ -9,7 +9,8 @@ export function cn(...inputs: ClassValue[]) {
 export enum ChatMode {
   NORMAL = 'normal',
   BLOCKS = 'blocks',
-  HEAVY = 'heavy'
+  HEAVY = 'heavy',
+  CHAT = 'chat'
 }
 
 export interface Chat {
