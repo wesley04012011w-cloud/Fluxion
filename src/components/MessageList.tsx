@@ -40,10 +40,10 @@ const MessageItem = React.memo(({
         {msg.role === 'user' ? <UserIcon size={14} /> : <Bot size={14} />}
       </div>
       <div className={cn(
-        "max-w-[92%] md:max-w-[85%] rounded-xl p-3 text-xs md:text-sm leading-relaxed break-words shadow-sm backdrop-blur-md",
+        "max-w-[92%] md:max-w-[85%] p-3 text-xs md:text-sm leading-relaxed break-words shadow-sm backdrop-blur-md ui-border",
         msg.role === 'user' 
-          ? "bg-white/5 border border-white/20 text-white" 
-          : "bg-black/40 border border-white/5 text-gray-200"
+          ? "bg-white/5 text-white" 
+          : "bg-black/40 text-gray-200"
       )}>
         {msg.images && msg.images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3">
@@ -62,12 +62,17 @@ const MessageItem = React.memo(({
           components={{
             code({ node, inline, className, children, ...props }: any) {
               const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : 'text';
               const codeContent = String(children).replace(/\n$/, '');
               
-              return !inline && match ? (
-                <div className="relative group my-3 w-full overflow-hidden rounded-lg border border-white/10 bg-black">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5">
-                    <span className="text-[9px] font-mono text-gray-500 uppercase">{match[1]}</span>
+              // If it's a block of code (not inline like `this`), force the container
+              // We check if there's newlines in the content or if it matched a language block
+              const isBlock = !inline && (match || codeContent.includes('\n') || codeContent.length > 50);
+
+              return isBlock ? (
+                <div className="relative group my-3 w-full overflow-hidden ui-card !bg-black">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5 ui-border !border-x-0 !border-t-0 !rounded-none">
+                    <span className="text-[9px] font-mono text-gray-500 uppercase">{language}</span>
                     <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => onSaveScript('FluxionScript', codeContent)}
@@ -144,10 +149,10 @@ const LoadingIndicator = ({ isHeavyMode }: { isHeavyMode?: boolean }) => {
 
   return (
     <div className="flex gap-3">
-      <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-white/20 text-white flex items-center justify-center animate-pulse">
+      <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-white/20 text-white flex items-center justify-center animate-pulse ui-border !border-transparent">
         {isHeavyMode ? stages[stage].icon : <Bot size={14} />}
       </div>
-      <div className="bg-[#0a0a0a] border border-white/5 rounded-xl p-3 flex items-center justify-center min-w-[60px]">
+      <div className="bg-[#0a0a0a] rounded-xl p-3 flex items-center justify-center min-w-[60px] ui-border">
         {isHeavyMode ? (
            <motion.div
              key={stage}
@@ -221,7 +226,7 @@ const MessageList = React.memo(({
                 <button
                   key={suggestion}
                   onClick={() => onSuggestionClick(suggestion)}
-                  className="p-3 rounded-xl bg-[#0a0a0a] border border-white/5 hover:border-white/50 hover:bg-white/5 transition-all text-left text-xs font-medium"
+                  className="p-3 bg-[#0a0a0a] hover:bg-white/5 transition-all text-left text-xs font-medium ui-border hover:!border-[var(--accent-primary)]"
                 >
                   {suggestion}
                 </button>
@@ -244,7 +249,7 @@ const MessageList = React.memo(({
                 <button
                   key={suggestion}
                   onClick={() => onSuggestionClick(suggestion)}
-                  className="p-3 rounded-xl bg-[#0a0a0a] border border-white/5 hover:border-white/50 hover:bg-white/5 transition-all text-left text-xs font-medium"
+                  className="p-3 bg-[#0a0a0a] hover:bg-white/5 transition-all text-left text-xs font-medium ui-border hover:!border-[var(--accent-primary)]"
                 >
                   {suggestion}
                 </button>
