@@ -141,17 +141,22 @@ const Sidebar = React.memo(({
 
                 <div className="h-px bg-white/5 my-1" />
 
-                <div className="flex items-center gap-2 w-full p-2.5 rounded-lg opacity-40 cursor-not-allowed text-gray-400 text-left text-xs">
-                  <div className="p-1.5 rounded bg-white/5">
-                    <Lock size={14} />
+                <button
+                  onClick={() => {
+                    createHeavyChat?.();
+                    setIsModeDropdownOpen(false);
+                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                  }}
+                  className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:bg-white/5 text-white transition-all text-left text-xs group"
+                >
+                  <div className="p-1.5 rounded bg-white/5 group-hover:bg-[var(--accent-primary)] group-hover:text-black transition-all">
+                    <Zap size={14} />
                   </div>
                   <div>
-                    <div className="font-bold flex items-center gap-2">
-                      Heavy 
-                    </div>
-                    <div className="text-[10px] font-medium text-red-500">Indisponível no momento</div>
+                    <div className="font-bold">Heavy</div>
+                    <div className="text-[10px] text-gray-500 font-medium">Processamento de scripts longos</div>
                   </div>
-                </div>
+                </button>
 
                 <div className="h-px bg-white/5 my-1" />
 
