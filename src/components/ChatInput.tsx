@@ -12,12 +12,10 @@ import {
   Info, 
   ChevronDown,
   Blocks,
-  CodeXml,
-  Github
+  CodeXml
 } from 'lucide-react';
 import { cn } from '../types';
 import CodeCombinerModal from './CodeCombinerModal';
-import GithubImportModal from './GithubImportModal';
 
 import { ThinkingLevel } from "@google/genai";
 
@@ -44,7 +42,6 @@ const ChatInput = React.memo(({
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
-  const [githubModalOpen, setGithubModalOpen] = useState(false);
   const [combinerModalOpen, setCombinerModalOpen] = useState(false);
   const [combinerBlocks, setCombinerBlocks] = useState(2);
   const [aiMode, setAiMode] = useState<{id: ThinkingLevel, label: string, icon: any}>({
@@ -199,10 +196,6 @@ const ChatInput = React.memo(({
     setShowSlashMenu(false);
   };
 
-  const handleGithubImport = (name: string, content: string) => {
-    setInput(prev => prev + (prev ? '\n\n' : '') + `--- GitHub: ${name} ---\n${content}\n--- Fim do Script ---\n`);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input.trim() && images.length === 0) || isGenerating) return;
@@ -224,7 +217,7 @@ const ChatInput = React.memo(({
         className="max-w-3xl mx-auto relative group"
       >
         {images.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2 p-1.5 ui-bg-muted backdrop-blur-md rounded-lg border border-white/10">
+          <div className="flex flex-wrap gap-1.5 mb-2 p-1.5 bg-white/5 backdrop-blur-md rounded-lg border border-white/10">
             {images.map((img, i) => (
               <div key={`preview-${i}`} className="relative group/img">
                 <img src={img} className="w-12 h-12 object-cover rounded border border-white/20" alt="Preview" />
@@ -244,7 +237,7 @@ const ChatInput = React.memo(({
             <button
               type="button"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2.5 ui-bg-muted backdrop-blur-md border border-white/10 rounded-xl ui-text-muted hover:text-[var(--accent-primary)] transition-all ui-border"
+              className="p-2.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl text-gray-400 hover:text-white transition-all"
             >
               <Plus size={16} />
             </button>
@@ -255,12 +248,12 @@ const ChatInput = React.memo(({
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: -5 }}
                   exit={{ opacity: 0, y: 5 }}
-                  className="absolute bottom-full left-0 mb-2 w-48 ui-bg-secondary/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 ui-border"
+                  className="absolute bottom-full left-0 mb-2 w-48 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50"
                 >
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold ui-text-muted hover:bg-white/10 hover:text-white transition-all border-b border-white/5"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-300 hover:bg-white/10 hover:text-white transition-all border-b border-white/5"
                   >
                     <ImageIcon size={14} />
                     UPLOAD IMAGENS
@@ -268,18 +261,10 @@ const ChatInput = React.memo(({
                   <button
                     type="button"
                     onClick={() => docInputRef.current?.click()}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold ui-text-muted hover:bg-white/10 hover:text-white transition-all border-b border-white/5"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-gray-300 hover:bg-white/10 hover:text-white transition-all"
                   >
                     <FileCode size={14} />
                     UPLOAD ARQUIVOS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGithubModalOpen(true)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold ui-text-muted hover:bg-white/10 hover:text-white transition-all"
-                  >
-                    <Github size={14} />
-                    IMPORTAR GITHUB
                   </button>
                 </motion.div>
               )}
@@ -292,7 +277,7 @@ const ChatInput = React.memo(({
               <button
                 type="button"
                 onClick={() => setCombinerModalOpen(true)}
-                className="flex items-center gap-1.5 px-2 py-1 ui-bg-muted backdrop-blur-md border border-white/10 rounded-lg ui-text-muted hover:text-white hover:bg-white/10 transition-all ui-border"
+                className="flex items-center gap-1.5 px-2 py-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                 title="Combinador de Blocos"
               >
                 <CodeXml size={10} />
@@ -301,7 +286,7 @@ const ChatInput = React.memo(({
               <button
                 type="button"
                 onClick={() => setShowModeMenu(!showModeMenu)}
-                className="flex items-center gap-1.5 px-2 py-1 ui-bg-muted backdrop-blur-md border border-white/10 rounded-lg text-[9px] font-bold ui-text-muted hover:text-white hover:bg-white/10 transition-all uppercase tracking-wider ui-border"
+                className="flex items-center gap-1.5 px-2 py-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-lg text-[9px] font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all uppercase tracking-wider"
               >
                 <aiMode.icon size={10} className="text-white/70" />
                 {aiMode.label}
@@ -312,8 +297,8 @@ const ChatInput = React.memo(({
                 type="button"
                 onClick={() => setIsBlockMode(!isBlockMode)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 ui-bg-muted backdrop-blur-md border border-white/10 rounded-lg text-[9px] font-bold transition-all uppercase tracking-wider ui-border",
-                  isBlockMode ? "text-[var(--accent-primary)] border-[var(--accent-primary)]/30" : "ui-text-muted hover:text-white"
+                  "flex items-center gap-1.5 px-2 py-1 bg-white/5 backdrop-blur-md border border-white/10 rounded-lg text-[9px] font-bold transition-all uppercase tracking-wider",
+                  isBlockMode ? "text-blue-400 border-blue-400/30" : "text-gray-400 hover:text-white"
                 )}
               >
                 <Blocks size={10} />
@@ -326,7 +311,7 @@ const ChatInput = React.memo(({
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: -5 }}
                     exit={{ opacity: 0, y: 5 }}
-                    className="absolute bottom-full left-0 mb-2 w-48 ui-bg-secondary/95 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl ui-border"
+                    className="absolute bottom-full left-0 mb-2 w-48 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl"
                   >
                     {aiModes.map((mode) => (
                       <button
@@ -338,7 +323,7 @@ const ChatInput = React.memo(({
                         }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold transition-all border-b border-white/5 last:border-0",
-                          aiMode.id === mode.id ? "bg-white/10 ui-text-main" : "ui-text-muted hover:bg-white/5 hover:text-white"
+                          aiMode.id === mode.id ? "bg-white/10 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
                         )}
                       >
                         <mode.icon size={12} />
@@ -356,9 +341,9 @@ const ChatInput = React.memo(({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: -5 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-full left-0 w-full mb-2 ui-bg-secondary/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar ui-border"
+                  className="absolute bottom-full left-0 w-full mb-2 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
                 >
-                  <div className="px-3 py-2 bg-white/5 border-b border-white/5 text-[8px] font-bold ui-text-muted uppercase tracking-widest">
+                  <div className="px-3 py-2 bg-white/5 border-b border-white/5 text-[8px] font-bold text-gray-500 uppercase tracking-widest">
                     Comandos do Sistema
                   </div>
                   {filteredCommands.map(cmd => (
@@ -369,8 +354,8 @@ const ChatInput = React.memo(({
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10 transition-all border-b border-white/5 last:border-0"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-[11px] font-bold ui-text-main">{cmd.name}</div>
-                        <div className="text-[9px] ui-text-muted truncate">{cmd.desc}</div>
+                        <div className="text-[11px] font-bold text-white">{cmd.name}</div>
+                        <div className="text-[9px] text-gray-400 truncate">{cmd.desc}</div>
                       </div>
                     </button>
                   ))}
@@ -384,9 +369,9 @@ const ChatInput = React.memo(({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: -5 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-full left-0 w-full mb-2 ui-bg-secondary/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar ui-border"
+                  className="absolute bottom-full left-0 w-full mb-2 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
                 >
-                  <div className="px-3 py-2 bg-white/5 border-b border-white/5 text-[8px] font-bold ui-text-muted uppercase tracking-widest">
+                  <div className="px-3 py-2 bg-white/5 border-b border-white/5 text-[8px] font-bold text-gray-500 uppercase tracking-widest">
                     Scripts Salvos
                   </div>
                   {filteredScripts.map(script => (
@@ -394,9 +379,9 @@ const ChatInput = React.memo(({
                       key={script.id}
                       type="button"
                       onClick={() => insertScript(script)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-medium ui-text-muted hover:bg-white/10 hover:text-white transition-all border-b border-white/5 last:border-0"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-medium text-gray-300 hover:bg-white/10 hover:text-white transition-all border-b border-white/5 last:border-0"
                     >
-                      <FileCode size={12} className="opacity-50" />
+                      <FileCode size={12} className="text-white/50" />
                       <span className="truncate">{script.name}</span>
                     </button>
                   ))}
@@ -414,14 +399,14 @@ const ChatInput = React.memo(({
               }}
               placeholder="Descreva seu script... (use / para scripts salvos)"
               rows={1}
-              className="w-full ui-bg-muted backdrop-blur-md border border-white/10 rounded-xl py-3 pl-4 pr-12 focus:outline-none focus:border-[var(--accent-primary)] transition-all resize-none custom-scrollbar text-xs md:text-sm ui-text-main ui-border"
+              className="w-full bg-white/5 backdrop-blur-md border border-white/10 rounded-xl py-3 pl-4 pr-12 focus:outline-none focus:border-white/30 transition-all resize-none custom-scrollbar text-xs md:text-sm"
               style={{ minHeight: '48px', maxHeight: '120px' }}
             />
           </div>
           <button
             type="submit"
             disabled={(!input.trim() && images.length === 0) || isGenerating}
-            className="absolute right-2 bottom-2 p-2 bg-[var(--accent-primary)] text-[var(--bg-primary)] rounded-lg hover:opacity-90 disabled:opacity-30 transition-all shadow-lg shadow-black/20 ui-border !border-transparent"
+            className="absolute right-2 bottom-2 p-2 bg-white text-black rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:hover:bg-white transition-all shadow-lg shadow-white/10"
           >
             <Send size={16} />
           </button>
@@ -449,12 +434,6 @@ const ChatInput = React.memo(({
         isOpen={combinerModalOpen}
         onClose={() => setCombinerModalOpen(false)}
         initialBlocks={combinerBlocks}
-      />
-
-      <GithubImportModal 
-        isOpen={githubModalOpen}
-        onClose={() => setGithubModalOpen(false)}
-        onImport={handleGithubImport}
       />
     </div>
   );

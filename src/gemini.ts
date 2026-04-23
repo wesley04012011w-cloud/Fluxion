@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -9,8 +9,7 @@ export const getGeminiResponse = async (
   customApiKey?: string,
   onChunk?: (chunk: string) => void,
   isHeavyMode: boolean = false,
-  isChatMode: boolean = false,
-  preferredModel?: string
+  isChatMode: boolean = false
 ) => {
   let availableKeys: string[] = [];
   let selectedIndex = -1;
@@ -57,16 +56,11 @@ export const getGeminiResponse = async (
 
   let lastError: any = null;
   // Fallback chain: Primary reasoning model, fallback to stable generation model, fallback to fast model
-  const defaultModelsList = [
+  const modelsToTry = [
     "gemini-3.1-pro-preview", // 1. Reasoning but very strict quota
     "gemini-2.5-pro",         // 2. High rationality, much more stable quota
     "gemini-3-flash-preview"  // 3. Ultra stable, huge quota, fast fallback
   ];
-
-  // If user has a preferred model, put it at the front of the chain
-  const modelsToTry = preferredModel && preferredModel !== 'auto' 
-    ? [preferredModel, ...defaultModelsList.filter(m => m !== preferredModel)]
-    : defaultModelsList;
 
   for (const apiKey of prioritizedKeys) {
     const aiInstance = new GoogleGenAI({ apiKey });
@@ -122,11 +116,17 @@ MODO PESADO (CÓDIGO LONGO):
         if (isHeavyMode) finalInstruction = heavyInstruction;
         else if (isChatMode) finalInstruction = chatInstruction;
 
-        // Note: thinkingConfig is removed to avoid model issues as requested.
+        // Note: thinkingConfig is handled smartly. We only apply it for models ending in 'pro-preview' or 'pro' just in case.
         const config: any = {
           systemInstruction: finalInstruction,
           temperature: 0.7,
         };
+
+        if (currentModel.includes('pro')) {
+           config.thinkingConfig = {
+             thinkingBudget: isChatMode ? 1024 : 4096 
+           };
+        }
 
         const stream = await aiInstance.models.generateContentStream({
           model: currentModel,
