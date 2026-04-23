@@ -9,7 +9,8 @@ export const getGeminiResponse = async (
   customApiKey?: string,
   onChunk?: (chunk: string) => void,
   isHeavyMode: boolean = false,
-  isChatMode: boolean = false
+  isChatMode: boolean = false,
+  preferredModel?: string
 ) => {
   let availableKeys: string[] = [];
   let selectedIndex = -1;
@@ -56,11 +57,15 @@ export const getGeminiResponse = async (
 
   let lastError: any = null;
   // Fallback chain: Primary reasoning model, fallback to stable generation model, fallback to fast model
-  const modelsToTry = [
+  const defaultModelsList = [
     "gemini-3.1-pro-preview", // 1. Reasoning but very strict quota
     "gemini-2.5-pro",         // 2. High rationality, much more stable quota
     "gemini-3-flash-preview"  // 3. Ultra stable, huge quota, fast fallback
   ];
+
+  const modelsToTry = preferredModel && preferredModel !== 'auto' 
+    ? [preferredModel, ...defaultModelsList.filter(m => m !== preferredModel)]
+    : defaultModelsList;
 
   for (const apiKey of prioritizedKeys) {
     const aiInstance = new GoogleGenAI({ apiKey });
@@ -116,7 +121,6 @@ MODO PESADO (CÓDIGO LONGO):
         if (isHeavyMode) finalInstruction = heavyInstruction;
         else if (isChatMode) finalInstruction = chatInstruction;
 
-        // Note: thinkingConfig is handled smartly. We only apply it for models ending in 'pro-preview' or 'pro' just in case.
         const config: any = {
           systemInstruction: finalInstruction,
           temperature: 0.7,
@@ -160,8 +164,6 @@ MODO PESADO (CÓDIGO LONGO):
         }
       }
     } // End Model Loop
-    // If we exit this loop without returning, ALL MODELS FAILED for this KEY.
-    // The script will now loop to the NEXT API KEY.
   } // End Key Loop
 
   throw lastError || new Error("Falha na API: Todas chaves e todos modelos (Pro/Flash) falharam. As cotas estão totalmente esgotadas.");

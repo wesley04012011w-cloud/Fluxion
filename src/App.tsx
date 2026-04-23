@@ -5,7 +5,7 @@ import {
   User as UserIcon, 
 } from 'lucide-react';
 import { auth, db, signIn, signOut } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 
@@ -31,6 +31,7 @@ import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
+import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -54,9 +55,12 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isOptimized, setIsOptimized] = useState(() => localStorage.getItem('app_optimized') === 'true');
+  const [isGlowEnabled, setIsGlowEnabled] = useState(() => localStorage.getItem('app_glow') !== 'false');
   const [isBlockMode, setIsBlockMode] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_model_preference') || 'auto');
+  const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'fluxion');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const [saveModal, setSaveModal] = useState<{
@@ -80,6 +84,15 @@ export default function App() {
   }, [apiKey]);
 
   useEffect(() => {
+    localStorage.setItem('gemini_model_preference', selectedModel);
+  }, [selectedModel]);
+
+  useEffect(() => {
+    localStorage.setItem('app_theme', theme);
+    document.body.className = `theme-${theme}`;
+  }, [theme]);
+
+  useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -87,29 +100,96 @@ export default function App() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
+    // Sync state from localStorage on storage event (for multi-page/tab sync)
+    const handleStorageChange = () => {
+      setApiKey(localStorage.getItem('gemini_api_key') || '');
+      setSelectedModel(localStorage.getItem('gemini_model_preference') || 'auto');
+      setTheme(localStorage.getItem('app_theme') || 'fluxion');
+      setIsOptimized(localStorage.getItem('app_optimized') === 'true');
+      setIsGlowEnabled(localStorage.getItem('app_glow') !== 'false');
+      
+      // Update scripts
+      if (!user) {
+        setSavedScripts(JSON.parse(localStorage.getItem('saved_scripts_offline') || '[]'));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log("Redirect login success:", result.user.email);
+          setUser(result.user);
+        }
+      } catch (error) {
+        console.error("Redirect check error:", error);
+      }
+    };
+    checkRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
+      console.log("Auth state changed:", u ? u.email : "deslogado");
       setUser(u);
       setLoading(false);
       
       if (u) {
+        // Sync offline scripts to Firestore on login
+        const offlineScripts = localStorage.getItem('saved_scripts_offline');
+        if (offlineScripts) {
+          try {
+            const scripts = JSON.parse(offlineScripts);
+            if (Array.isArray(scripts) && scripts.length > 0) {
+              scripts.forEach(async (script: any) => {
+                await addDoc(collection(db, 'scripts'), {
+                  userId: u.uid,
+                  name: script.name,
+                  content: script.content,
+                  createdAt: serverTimestamp()
+                });
+              });
+              // Clear offline scripts after sync
+              localStorage.removeItem('saved_scripts_offline');
+            }
+          } catch (e) {
+            console.error("Migration failed:", e);
+          }
+        }
+
         // Update user activity
-        setDoc(doc(db, 'users', u.uid), {
-          uid: u.uid,
-          email: u.email,
-          displayName: u.displayName,
-          photoURL: u.photoURL,
-          lastActive: serverTimestamp(),
-          isOnline: true
-        }, { merge: true });
+        try {
+           setDoc(doc(db, 'users', u.uid), {
+            uid: u.uid,
+            email: u.email,
+            displayName: u.displayName,
+            photoURL: u.photoURL,
+            lastActive: serverTimestamp(),
+            isOnline: true
+          }, { merge: true }).catch(err => {
+            console.error("Error updating user status:", err);
+          });
+        } catch (e) {
+          console.error("Failed to update user doc:", e);
+        }
       }
     });
-    return unsubscribe;
+
+    // Safety timeout for loading state
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
@@ -137,7 +217,7 @@ export default function App() {
       const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
       setChats(chatList);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'chats');
+      handleFirestoreError(error, OperationType.LIST, 'chats', user);
     });
     return unsubscribe;
   }, [user]);
@@ -157,7 +237,7 @@ export default function App() {
       }));
       setSavedScripts(scripts);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'scripts');
+      handleFirestoreError(error, OperationType.LIST, 'scripts', user);
     });
     return unsubscribe;
   }, [user]);
@@ -175,13 +255,27 @@ export default function App() {
       const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
       setMessages(msgList);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`);
+      handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
     });
     return unsubscribe;
   }, [currentChatId, user]);
 
+  const handleSignIn = async () => {
+    try {
+      const result = await signIn();
+      if (result?.user) {
+        setUser(result.user);
+      }
+    } catch (error) {
+      console.error("Login manually failed:", error);
+    }
+  };
+
   const createNewChat = async () => {
-    if (!user) return;
+    if (!user) {
+      await handleSignIn();
+      return;
+    }
     try {
       const docRef = await addDoc(collection(db, 'chats'), {
         userId: user.uid,
@@ -197,7 +291,7 @@ export default function App() {
 
   const createHeavyChat = async () => {
     if (!user) {
-      await signIn();
+      await handleSignIn();
       return;
     }
 
@@ -246,7 +340,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
   const createConversationChat = async () => {
     if (!user) {
-      await signIn();
+      await handleSignIn();
       return;
     }
 
@@ -275,7 +369,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           if (currentChatId === id) setCurrentChatId(null);
           await deleteDoc(doc(db, 'chats', id));
         } catch (error) {
-          handleFirestoreError(error, OperationType.DELETE, `chats/${id}`);
+          handleFirestoreError(error, OperationType.DELETE, `chats/${id}`, user);
         }
       }
     });
@@ -288,19 +382,29 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       title: 'Excluir Script',
       message: 'Tem certeza que deseja excluir este script salvo?',
       onConfirm: async () => {
-        try {
-          await deleteDoc(doc(db, 'scripts', id));
-        } catch (error) {
-          handleFirestoreError(error, OperationType.DELETE, `scripts/${id}`);
+        if (user) {
+          try {
+            await deleteDoc(doc(db, 'scripts', id));
+          } catch (error) {
+            handleFirestoreError(error, OperationType.DELETE, `scripts/${id}`, user);
+          }
+        } else {
+          const updated = savedScripts.filter(s => s.id !== id);
+          localStorage.setItem('saved_scripts_offline', JSON.stringify(updated));
+          setSavedScripts(updated);
+          window.dispatchEvent(new Event('storage'));
         }
       }
     });
-  }, []);
+  }, [user, savedScripts]);
 
   const handleSendMessage = useCallback(async (text: string, images?: string[], thinkingLevel?: string, useBlockMode?: boolean) => {
     if (!user) {
       try {
-        await signIn();
+        const result = await signIn();
+        if (result?.user) {
+          setUser(result.user);
+        }
         return; // Stop here, user needs to send message again 
       } catch (error) {
         console.error("Login failed:", error);
@@ -358,7 +462,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           setStreamingText(prev => prev + chunk);
         },
         isHeavy,
-        isChatMode
+        isChatMode,
+        selectedModel
       );
 
       await addDoc(collection(db, `chats/${chatId}/messages`), {
@@ -404,7 +509,10 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
   const handleSaveScript = async (name: string, content: string) => {
     if (!user) {
       try {
-        await signIn();
+        const result = await signIn();
+        if (result?.user) {
+          setUser(result.user);
+        }
         return;
       } catch (error) {
         return;
@@ -467,13 +575,29 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       <BrowserRouter>
         <Routes>
           <Route path="/home" element={<ConfigPage />} />
+          <Route path="/config" element={<SettingsPage />} />
           <Route path="/" element={
             <motion.div 
               initial={isOptimized ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: isOptimized ? 0 : 1 }}
-              className="flex h-screen bg-[#050505] text-white font-sans selection:bg-white/20 overflow-hidden relative"
+              className="flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative"
             >
+              {/* Theme Color Background Glow */}
+              <AnimatePresence>
+                {isGlowEnabled && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.12 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-0 pointer-events-none transition-all duration-1000"
+                    style={{
+                      background: `radial-gradient(circle at 50% 120%, var(--accent-primary) 0%, transparent 60%)`
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+
               {/* Star Background Layer - Disabled when optimized */}
               {!isOptimized && (
                 <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
@@ -500,13 +624,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               chats={chats}
               currentChatId={currentChatId}
               setCurrentChatId={setCurrentChatId}
-              createNewChat={async () => {
-                if (!user) {
-                  await signIn();
-                  return;
-                }
-                createNewChat();
-              }}
+              createNewChat={createNewChat}
               createHeavyChat={createHeavyChat}
               createConversationChat={createConversationChat}
               deleteChat={deleteChat}
@@ -516,11 +634,13 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               apiKey={apiKey}
               setApiKey={setApiKey}
               signOut={signOut}
-              signIn={signIn}
+              signIn={handleSignIn}
               deferredPrompt={deferredPrompt}
               setDeferredPrompt={setDeferredPrompt}
               isOptimized={isOptimized}
               setIsOptimized={setIsOptimized}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 z-10">

@@ -28,7 +28,7 @@ import { AppUser, AppConfig, OperationType, handleFirestoreError, cn } from '../
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
-const ADMIN_EMAIL = 'soparonosk37@gmail.com';
+const ADMIN_EMAIL = 'wesley04012011w@gmail.com';
 
 export default function ConfigPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -67,7 +67,7 @@ export default function ConfigPage() {
       const userList = snapshot.docs.map(doc => doc.data() as AppUser);
       setUsers(userList);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+      handleFirestoreError(error, OperationType.LIST, 'users', auth.currentUser);
     });
 
     // Listen to config
@@ -83,7 +83,7 @@ export default function ConfigPage() {
       }
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'config/main');
+      handleFirestoreError(error, OperationType.GET, 'config/main', auth.currentUser);
     });
 
     // Listen to error logs
@@ -122,7 +122,7 @@ export default function ConfigPage() {
       });
       setNewKey('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
     }
   };
 
@@ -135,7 +135,7 @@ export default function ConfigPage() {
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
     }
   };
 
@@ -149,7 +149,7 @@ export default function ConfigPage() {
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
     }
   };
 
@@ -162,7 +162,7 @@ export default function ConfigPage() {
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main');
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
     }
   };
 

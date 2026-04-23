@@ -13,7 +13,10 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Ensure local persistence to help with iframe state issues
-setPersistence(auth, browserLocalPersistence).catch(err => console.error("Persistence error:", err));
+const persistencePromise = setPersistence(auth, browserLocalPersistence).catch(err => {
+  console.error("Persistence error:", err);
+  return null;
+});
 
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
@@ -24,15 +27,32 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const signIn = async () => {
   try {
-    return await signInWithPopup(auth, googleProvider);
+    // Wait for persistence to be established first if available
+    await persistencePromise;
+    
+    console.log("Iniciando signInWithPopup...");
+    const result = await signInWithPopup(auth, googleProvider);
+    console.log("Login bem sucedido:", result.user.email);
+    return result;
   } catch (error: any) {
     console.error("Sign in error:", error);
+    
+    // Check for iframe specific issues
+    const isIframe = window.self !== window.top;
+    
     if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
       return;
     } else if (error.code === 'auth/popup-blocked') {
-      alert('🔒 BLOQUEIO DE POPUP DETECTADO!\n\nSeu navegador bloqueou a janela de login por estarmos dentro de um iframe.\n\nSOLUÇÃO: Clique no ícone de "janela bloqueada" na barra de endereços e escolha "Sempre permitir", ou abra o Fluxion em uma nova aba para logar.');
-    } else if (error.message?.includes('missing initial state') || error.code === 'auth/internal-error') {
-      alert('⚠️ ERRO DE ESTADO (IFRAME)\n\nO login falhou devido às restrições de segurança do iframe.\n\nSOLUÇÃO: Clique no link "Abra em uma nova aba" no menu lateral para fazer login com sucesso.');
+      alert('🔒 BLOQUEIO DE POPUP DETECTADO!\n\nSeu navegador bloqueou a janela de login.\n\nSOLUÇÃO: Clique no ícone de "janela bloqueada" na barra de endereços e escolha "Sempre permitir", ou abra o Fluxion em uma nova aba para logar.');
+    } else if (error.message?.includes('missing initial state') || error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed' || error.message?.includes('cross-origin')) {
+      if (isIframe) {
+        const confirmOpen = confirm('⚠️ RESTRIÇÃO DE SEGURANÇA (IFRAME)\n\nNavegadores modernos (como Chrome/Safari) bloqueiam autenticação em iframes por segurança.\n\nDeseja abrir em uma nova aba para fazer login com sucesso agora?');
+        if (confirmOpen) {
+          window.open(window.location.href, '_blank');
+        }
+      } else {
+        alert('Erro de conexão no login. Tente novamente ou verifique sua internet.');
+      }
     } else {
       alert('Erro ao entrar com Google: ' + error.message);
     }
