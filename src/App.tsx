@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageSquare, 
   LogOut, 
-  User as UserIcon, 
+  User as UserIcon,
+  Bell
 } from 'lucide-react';
 import { auth, db, signOut } from './firebase';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
@@ -30,6 +31,7 @@ import ConfirmationModal from './components/ConfirmationModal';
 import SaveScriptModal from './components/SaveScriptModal';
 import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './types';
 import AuthModal from './components/AuthModal';
+import NotificationsModal from './components/NotificationsModal';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
@@ -38,6 +40,7 @@ import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [chats, setChats] = useState<Chat[]>([]);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
@@ -241,6 +244,19 @@ export default function App() {
     }
     return '';
   };
+
+  const [activeAnnouncementsCount, setActiveAnnouncementsCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const qAnnouncements = query(collection(db, 'announcements'), where('isActive', '==', true));
+    const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
+      setActiveAnnouncementsCount(snapshot.size);
+    }, (error) => {
+      console.error("Announcements fetch error:", error);
+    });
+    return () => unsubAnnouncements();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -716,6 +732,21 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                 </button>
               </div>
 
+              {user && (
+                <div className="absolute top-4 right-4 z-40">
+                  <button 
+                    onClick={() => setIsNotificationsOpen(true)}
+                    className="p-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/10 transition-all relative"
+                    title="Comunicados"
+                  >
+                    <Bell size={16} />
+                    {activeAnnouncementsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#09090b]"></span>
+                    )}
+                  </button>
+                </div>
+              )}
+
               <div 
                 ref={chatContainerRef}
                 className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar scroll-smooth"
@@ -761,6 +792,12 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               onSave={executeSaveScript}
               existingScripts={savedScripts}
               defaultName={saveModal.defaultName}
+            />
+
+            <NotificationsModal
+              isOpen={isNotificationsOpen}
+              onClose={() => setIsNotificationsOpen(false)}
+              user={user}
             />
 
             <style>{`

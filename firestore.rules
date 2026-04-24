@@ -98,7 +98,10 @@ service cloud.firestore {
              (!('email' in data) || data.email == null || data.email is string) &&
              (!('displayName' in data) || data.displayName == null || data.displayName is string) &&
              (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
-             (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool);
+             (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
+             (!('isBanned' in data) || data.isBanned is bool) &&
+             (!('blockedUntil' in data) || data.blockedUntil == null || data.blockedUntil is timestamp) &&
+             (!('bannedAt' in data) || data.bannedAt == null || data.bannedAt is timestamp);
     }
 
     function isValidConfig(data) {
@@ -145,7 +148,9 @@ service cloud.firestore {
     // User Rules
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
-      allow create, update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBanned', 'blockedUntil', 'bannedAt'])) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // Config Rules
@@ -167,6 +172,11 @@ service cloud.firestore {
     match /security_alerts/{alertId} {
       allow create: if isAuthenticated();
       allow read, update, delete: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
     }
 
     // Default deny

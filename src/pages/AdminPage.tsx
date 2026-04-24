@@ -47,6 +47,11 @@ export default function AdminPage() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '' });
+  const [isPublishingAnnouncement, setIsPublishingAnnouncement] = useState(false);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -103,11 +108,20 @@ export default function AdminPage() {
       }
     );
 
+    // Fetch Announcements
+    const announcementsUnsubscribe = onSnapshot(
+      query(collection(db, 'announcements'), orderBy('createdAt', 'desc')),
+      (snapshot) => {
+        setAnnouncements(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+
     return () => {
       configUnsubscribe();
       usersUnsubscribe();
       alertsUnsubscribe();
       errorsUnsubscribe();
+      announcementsUnsubscribe();
     };
   }, [isAdmin]);
 
@@ -221,6 +235,40 @@ export default function AdminPage() {
         blockedUntil: null
       });
       alert('✅ Usuário liberado!');
+    } catch (e: any) {
+      alert('❌ Erro: ' + e.message);
+    }
+  };
+
+  const publishAnnouncement = async () => {
+    if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) {
+      alert('Preencha título e conteúdo!');
+      return;
+    }
+    setIsPublishingAnnouncement(true);
+    try {
+      await addDoc(collection(db, 'announcements'), {
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        createdAt: Timestamp.now(),
+        createdBy: user?.uid,
+        isActive: true
+      });
+      setNewAnnouncement({ title: '', content: '' });
+      setShowAnnouncementModal(false);
+      alert('✅ Comunicado publicado!');
+    } catch (e: any) {
+      alert('❌ Erro ao publicar: ' + e.message);
+    } finally {
+      setIsPublishingAnnouncement(false);
+    }
+  };
+
+  const toggleAnnouncementStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'announcements', id), {
+        isActive: !currentStatus
+      });
     } catch (e: any) {
       alert('❌ Erro: ' + e.message);
     }
@@ -542,9 +590,110 @@ export default function AdminPage() {
               </div>
             </section>
 
+            {/* Comunicados */}
+            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                   <div className="p-2 bg-purple-500/10 rounded-lg ui-border border-purple-500/20 text-purple-400">
+                      <FileText size={18} />
+                   </div>
+                   <h2 className="text-sm font-black uppercase tracking-tight">Comunicados</h2>
+                </div>
+                <button 
+                  onClick={() => setShowAnnouncementModal(true)}
+                  className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all border border-purple-500/20"
+                >
+                  NOVO
+                </button>
+              </div>
+              
+              <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {announcements.length === 0 ? (
+                  <p className="text-[10px] text-gray-500 italic">Nenhum comunicado.</p>
+                ) : (
+                  announcements.map((ann) => (
+                    <div key={ann.id} className="bg-black/40 border border-white/5 p-3 rounded-xl">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-xs font-bold text-white truncate pr-2">{ann.title}</h3>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleAnnouncementStatus(ann.id, ann.isActive)}
+                            className={cn(
+                              "text-[8px] font-black px-2 py-0.5 rounded uppercase",
+                              ann.isActive ? "bg-green-500/20 text-green-500" : "bg-gray-500/20 text-gray-500"
+                            )}
+                          >
+                            {ann.isActive ? 'ATIVO' : 'INATIVO'}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 line-clamp-2">{ann.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
           </div>
         </div>
       </div>
+
+      {/* Modal de Comunicado */}
+      <AnimatePresence>
+        {showAnnouncementModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
+            >
+              <h2 className="text-lg font-black text-white mb-4">Novo Comunicado</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Título</label>
+                  <input
+                    type="text"
+                    value={newAnnouncement.title}
+                    onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })}
+                    className="w-full bg-black border border-white/10 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-purple-500/50 text-white"
+                    placeholder="Título chamativo"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Mensagem</label>
+                  <textarea
+                    value={newAnnouncement.content}
+                    onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })}
+                    className="w-full bg-black border border-white/10 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-purple-500/50 text-white min-h-[100px] resize-none"
+                    placeholder="Escreva a mensagem..."
+                  />
+                </div>
+                <div className="flex gap-2 justify-end pt-2">
+                  <button
+                    onClick={() => setShowAnnouncementModal(false)}
+                    className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-white"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    onClick={publishAnnouncement}
+                    disabled={isPublishingAnnouncement}
+                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-black px-6 py-2 rounded-xl transition-all disabled:opacity-50"
+                  >
+                    {isPublishingAnnouncement ? 'PUBLICANDO...' : 'PUBLICAR'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

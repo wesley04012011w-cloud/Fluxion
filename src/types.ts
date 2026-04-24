@@ -51,6 +51,15 @@ export interface SecurityAlert {
   status: 'pending' | 'reviewed';
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Timestamp;
+  createdBy: string;
+  isActive: boolean;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'model';
