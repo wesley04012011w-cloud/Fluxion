@@ -85,9 +85,13 @@ export default function AdminPage() {
 
     // Fetch Security Alerts
     const alertsUnsubscribe = onSnapshot(
-      query(collection(db, 'security_alerts'), orderBy('createdAt', 'desc'), limit(50)),
+      query(collection(db, 'security_alerts'), orderBy('createdAt', 'desc'), limit(100)),
       (snapshot) => {
+        console.log('🛡️ Admin: Received', snapshot.size, 'security alerts');
         setAlerts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SecurityAlert)));
+      },
+      (error) => {
+        console.error('🛡️ Admin: Alerts snapshot error:', error);
       }
     );
 
@@ -181,6 +185,44 @@ export default function AdminPage() {
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `security_alerts/${alertId}`, user);
+    }
+  };
+
+  const banUser = async (uid: string) => {
+    if (!window.confirm('🚫 BANIR PERMANENTEMENTE este usuário?')) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        isBanned: true,
+        bannedAt: Timestamp.now()
+      });
+      alert('✅ Usuário banido com sucesso!');
+    } catch (e: any) {
+      alert('❌ Erro: ' + e.message);
+    }
+  };
+
+  const blockUser = async (uid: string, h: number) => {
+    try {
+      const until = new Date();
+      until.setHours(until.getHours() + h);
+      await updateDoc(doc(db, 'users', uid), {
+        blockedUntil: Timestamp.fromDate(until)
+      });
+      alert(`⏳ Bloqueado por ${h} horas!`);
+    } catch (e: any) {
+      alert('❌ Erro: ' + e.message);
+    }
+  };
+
+  const unblockUser = async (uid: string) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        isBanned: false,
+        blockedUntil: null
+      });
+      alert('✅ Usuário liberado!');
+    } catch (e: any) {
+      alert('❌ Erro: ' + e.message);
     }
   };
 
@@ -410,22 +452,76 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
-                {users.map((u) => (
-                  <div key={u.uid} className="p-3 flex items-center gap-3">
-                    <img 
-                      src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} 
-                      className="w-8 h-8 rounded-full border border-white/10"
-                      alt=""
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-bold truncate leading-tight">{u.displayName || u.email?.split('@')[0] || 'Desconhecido'}</p>
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-1.5 h-1.5 rounded-full", u.isOnline ? "bg-green-500" : "bg-gray-700")} />
-                        <p className="text-[8px] text-gray-500 font-bold uppercase">{u.isOnline ? 'Online' : 'Offline'}</p>
+                {users.map((u) => {
+                  const lastActive = u.lastActive?.toDate?.() || new Date(0);
+                  const now = new Date();
+                  // threshold de 2 minutos para ser considerado online real
+                  const isOnline = (now.getTime() - lastActive.getTime()) < 120000;
+                  const isSuspended = u.isBanned || (u.blockedUntil && u.blockedUntil.toMillis() > now.getTime());
+
+                  return (
+                  <div key={u.uid} className="p-4 flex flex-col gap-3 group border-b border-white/5 last:border-0">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} 
+                        className="w-10 h-10 rounded-full border border-white/10"
+                        alt=""
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate leading-tight flex items-center gap-2">
+                          {u.displayName || u.email?.split('@')[0] || 'Desconhecido'}
+                          {u.isBanned && (
+                            <span className="bg-red-500 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter">BANIDO</span>
+                          )}
+                          {!u.isBanned && u.blockedUntil && u.blockedUntil.toMillis() > now.getTime() && (
+                            <span className="bg-orange-500 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter">SUSPENSO</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className={cn("w-2 h-2 rounded-full shadow-sm", isOnline ? "bg-green-500 animate-pulse" : "bg-gray-700")} />
+                          <p className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">{isOnline ? 'Online AGORA' : 'Offline'}</p>
+                          <span className="text-[8px] text-gray-700 font-mono">• {u.email}</span>
+                        </div>
                       </div>
                     </div>
+
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                      {isSuspended ? (
+                        <button 
+                          onClick={() => unblockUser(u.uid)}
+                          className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 text-[9px] font-black py-1.5 rounded-lg border border-green-500/20 uppercase"
+                        >
+                          LIBERAR
+                        </button>
+                      ) : (
+                        <>
+                          <div className="flex-1 relative group/menu">
+                            <button className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[9px] font-black py-1.5 rounded-lg border border-orange-500/20 uppercase">
+                              BLOQUEAR
+                            </button>
+                            <div className="absolute bottom-full left-0 mb-2 hidden group-hover/menu:block bg-zinc-900 border border-white/10 p-1 rounded-xl shadow-2xl z-50 min-w-[120px]">
+                              {[1, 12, 24, 168].map(h => (
+                                <button 
+                                  key={h}
+                                  onClick={() => blockUser(u.uid, h)}
+                                  className="block w-full text-left px-3 py-2 hover:bg-white/5 text-[9px] font-bold"
+                                >
+                                  {h < 24 ? `🕒 ${h} HORAS` : `📅 ${h/24} DIAS`}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => banUser(u.uid)}
+                            className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-black py-1.5 rounded-lg border border-red-500/20 uppercase"
+                          >
+                            BANIR
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                ))}
+                )})}
               </div>
             </section>
 

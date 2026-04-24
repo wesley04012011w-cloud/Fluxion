@@ -145,9 +145,6 @@ export default function App() {
       setLoading(false);
       
       if (u) {
-        if (!u.emailVerified && u.providerData[0]?.providerId === 'password') {
-          console.log("User email not verified");
-        }
         // Sync offline scripts to Firestore on login
         const offlineScripts = localStorage.getItem('saved_scripts_offline');
         if (offlineScripts) {
@@ -162,33 +159,15 @@ export default function App() {
                   createdAt: serverTimestamp()
                 });
               });
-              // Clear offline scripts after sync
               localStorage.removeItem('saved_scripts_offline');
             }
           } catch (e) {
             console.error("Migration failed:", e);
           }
         }
-
-        // Update user activity
-        try {
-           setDoc(doc(db, 'users', u.uid), {
-            uid: u.uid,
-            email: u.email,
-            displayName: u.displayName,
-            photoURL: u.photoURL,
-            lastActive: serverTimestamp(),
-            isOnline: true
-          }, { merge: true }).catch(err => {
-            console.error("Error updating user status:", err);
-          });
-        } catch (e) {
-          console.error("Failed to update user doc:", e);
-        }
       }
     });
 
-    // Safety timeout for loading state
     const timeout = setTimeout(() => {
       setLoading(false);
     }, 5000);
@@ -199,19 +178,69 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    
-    // Heartbeat for online status
-    const interval = setInterval(() => {
-      setDoc(doc(db, 'users', user.uid), {
-        lastActive: serverTimestamp(),
-        isOnline: true
-      }, { merge: true });
-    }, 60000); // Every minute
+  // Presença e Monitoramento
+  const [userStatus, setUserStatus] = useState<{ banned: boolean; blockedUntil?: Timestamp } | null>(null);
 
-    return () => clearInterval(interval);
+  useEffect(() => {
+    if (!user) {
+      setUserStatus(null);
+      return;
+    }
+
+    // Monitorar status do usuário em tempo real
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setUserStatus({
+          banned: data.isBanned || false,
+          blockedUntil: data.blockedUntil
+        });
+      }
+    });
+
+    // Batimento cardíaco de presença
+    const updatePresence = async () => {
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || 'Usuário Fluxion',
+          photoURL: user.photoURL,
+          lastActive: serverTimestamp(),
+          isOnline: true // Legado, o admin usará lastActive
+        }, { merge: true });
+      } catch (e) {
+        console.error("Presence update failed:", e);
+      }
+    };
+
+    updatePresence();
+    const interval = setInterval(updatePresence, 60000); // 1 minuto
+    
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, [user]);
+
+  const isActuallyBlocked = () => {
+    if (!userStatus) return false;
+    if (userStatus.banned) return true;
+    if (userStatus.blockedUntil) {
+      return userStatus.blockedUntil.toMillis() > Date.now();
+    }
+    return false;
+  };
+
+  const getBlockMessage = () => {
+    if (!userStatus) return '';
+    if (userStatus.banned) return '🚫 ACESSO NEGADO: Sua conta foi banida permanentemente por violação das diretrizes de segurança.';
+    if (userStatus.blockedUntil) {
+      const date = userStatus.blockedUntil.toDate();
+      return `⏳ ACESSO SUSPENSO: Sua conta está bloqueada temporariamente até ${date.toLocaleString()}.`;
+    }
+    return '';
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -404,6 +433,11 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       return;
     }
 
+    if (isActuallyBlocked()) {
+      alert(getBlockMessage());
+      return;
+    }
+
     if (!text.trim() && (!images || images.length === 0)) return;
 
     let chatId = currentChatId;
@@ -466,6 +500,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       });
 
       // 1. Audit conversation with Groq (NORMAL CASE)
+      console.log('🛡️ Triggering security audit for message:', text.slice(0, 50));
       const auditResult = await checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true });
       
       // Se o auditor Groq detectar algo pesado que passou pelo Gemini, forçamos um log extra se necessário (embora o groqService já logue)
@@ -490,7 +525,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           content: `MENSAGEM BLOQUEADA PELO GEMINI: ${text}`,
           analysis: 'O filtro de segurança do Google (Gemini) barrou esta mensagem por conteúdo impróprio ou tentativa de bypass.',
           severity: 'high',
-          createdAt: serverTimestamp(),
+          createdAt: Timestamp.now(),
           status: 'pending',
           flow: {
             readMessage: true,
