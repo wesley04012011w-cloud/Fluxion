@@ -13,16 +13,29 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         manifestFilename: 'manifest.json',
+        includeAssets: ['logo.png', 'robots.txt'],
         devOptions: {
           enabled: true,
         },
         manifest: {
-          name: "Fluxion AI",
+          name: "Fluxion AI Studio",
           short_name: "Fluxion",
-          description: "IA especialista em scripts Luau para Roblox",
-          theme_color: "#2563eb",
+          description: "Ambiente de desenvolvimento inteligente para Scripts Luau (Roblox)",
+          theme_color: "#0F111A",
           background_color: "#0F111A",
           display: "standalone",
+          orientation: "any",
+          id: "/",
+          start_url: "/",
+          categories: ["productivity", "utilities", "developer"],
+          shortcuts: [
+            {
+              name: "Novo Script",
+              short_name: "Novo",
+              url: "/?action=new",
+              icons: [{ src: "/logo.png", sizes: "192x192" }]
+            }
+          ],
           icons: [
             {
               src: '/logo.png',
@@ -33,6 +46,12 @@ export default defineConfig(({mode}) => {
               src: '/logo.png',
               sizes: '512x512',
               type: 'image/png'
+            },
+            {
+              src: '/logo.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any'
             },
             {
               src: '/logo.png',

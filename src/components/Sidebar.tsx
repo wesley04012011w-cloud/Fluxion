@@ -308,10 +308,10 @@ const Sidebar = React.memo(({
             <div className="space-y-2">
               <button
                 onClick={signIn}
-                className="flex items-center gap-2 w-full p-2 rounded-lg bg-white hover:bg-gray-200 text-black font-bold transition-all text-xs ui-border !border-transparent"
+                className="flex items-center justify-center gap-2 w-full p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all text-xs ui-border !border-transparent shadow-lg shadow-blue-900/20"
               >
-                <LogOut size={14} className="rotate-180" />
-                <span>ENTRAR COM GOOGLE</span>
+                <LogOut size={16} className="rotate-180" />
+                <span>ENTRAR NO STUDIO</span>
               </button>
               <div className="bg-white/5 border border-white/10 rounded-lg p-2.5 space-y-1.5">
                 <p className="text-[9px] text-gray-400 leading-tight">

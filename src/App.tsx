@@ -4,7 +4,7 @@ import {
   LogOut, 
   User as UserIcon, 
 } from 'lucide-react';
-import { auth, db, signIn, signOut } from './firebase';
+import { auth, db, signOut } from './firebase';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { 
   collection, 
@@ -28,6 +28,7 @@ import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
 import SaveScriptModal from './components/SaveScriptModal';
 import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './types';
+import AuthModal from './components/AuthModal';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
@@ -62,6 +63,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_model_preference') || 'auto');
   const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'fluxion');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -141,6 +143,9 @@ export default function App() {
       setLoading(false);
       
       if (u) {
+        if (!u.emailVerified && u.providerData[0]?.providerId === 'password') {
+          console.log("User email not verified");
+        }
         // Sync offline scripts to Firestore on login
         const offlineScripts = localStorage.getItem('saved_scripts_offline');
         if (offlineScripts) {
@@ -261,19 +266,12 @@ export default function App() {
   }, [currentChatId, user]);
 
   const handleSignIn = async () => {
-    try {
-      const result = await signIn();
-      if (result?.user) {
-        setUser(result.user);
-      }
-    } catch (error) {
-      console.error("Login manually failed:", error);
-    }
+    setIsAuthModalOpen(true);
   };
 
   const createNewChat = async () => {
     if (!user) {
-      await handleSignIn();
+      setIsAuthModalOpen(true);
       return;
     }
     try {
@@ -291,7 +289,7 @@ export default function App() {
 
   const createHeavyChat = async () => {
     if (!user) {
-      await handleSignIn();
+      setIsAuthModalOpen(true);
       return;
     }
 
@@ -340,7 +338,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
   const createConversationChat = async () => {
     if (!user) {
-      await handleSignIn();
+      setIsAuthModalOpen(true);
       return;
     }
 
@@ -400,16 +398,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
   const handleSendMessage = useCallback(async (text: string, images?: string[], thinkingLevel?: string, useBlockMode?: boolean) => {
     if (!user) {
-      try {
-        const result = await signIn();
-        if (result?.user) {
-          setUser(result.user);
-        }
-        return; // Stop here, user needs to send message again 
-      } catch (error) {
-        console.error("Login failed:", error);
-        return;
-      }
+      setIsAuthModalOpen(true);
+      return;
     }
 
     if (!text.trim() && (!images || images.length === 0)) return;
@@ -497,7 +487,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           chatId,
           userId: user.uid,
           role: 'model',
-          content: `❌ Ops, ocorreu um erro interno de conexão ou de API ao gerar a resposta.\n\nUm relatório detalhado foi enviado ao administrador do sistema para averiguação. Tente enviar de novo ou aguarde o suporte analisar o problema.`,
+          content: `❌ Ops, ocorreu um erro interno de conexão or de API ao gerar a resposta.\n\nUm relatório detalhado foi enviado ao administrador do sistema para averiguação. Tente enviar de novo ou aguarde o suporte analisar o problema.`,
           createdAt: serverTimestamp()
         });
       } catch(logError) {
@@ -508,15 +498,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
   const handleSaveScript = async (name: string, content: string) => {
     if (!user) {
-      try {
-        const result = await signIn();
-        if (result?.user) {
-          setUser(result.user);
-        }
-        return;
-      } catch (error) {
-        return;
-      }
+      setIsAuthModalOpen(true);
+      return;
     }
     setSaveModal({
       isOpen: true,
@@ -634,7 +617,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               apiKey={apiKey}
               setApiKey={setApiKey}
               signOut={signOut}
-              signIn={handleSignIn}
+              signIn={() => setIsAuthModalOpen(true)}
               deferredPrompt={deferredPrompt}
               setDeferredPrompt={setDeferredPrompt}
               isOptimized={isOptimized}
@@ -678,6 +661,11 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                 setIsBlockMode={setIsBlockMode}
               />
             </main>
+
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)} 
+            />
 
             <ConfirmationModal 
               isOpen={confirmModal.isOpen}
