@@ -69,7 +69,7 @@ const Sidebar = React.memo(({
   setSelectedModel
 }: SidebarProps) => {
   const navigate = useNavigate();
-  const isAdmin = user?.email === 'wesley04012011w@gmail.com';
+  const isAdmin = user?.email === 'wesley04012011w@gmail.com' || user?.email === 'soparonosk37/gmail.com' || user?.email === 'soparonosk37@gmail.com';
   const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
 
   const handleInstallClick = async () => {
@@ -272,8 +272,8 @@ const Sidebar = React.memo(({
 
           {isAdmin && (
             <button
-              onClick={() => navigate('/home')}
-              className="flex items-center gap-2 w-full p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all text-xs font-bold border border-white/10 ui-border"
+              onClick={() => navigate('/admin')}
+              className="flex items-center gap-2 w-full p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all text-xs font-bold border border-red-500/10 ui-border"
             >
               <Shield size={14} />
               <span>PAINEL ADMIN</span>

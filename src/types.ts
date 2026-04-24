@@ -34,9 +34,21 @@ export interface AppUser {
 export interface AppConfig {
   id: string;
   geminiApiKeys: string[];
+  groqApiKey?: string;
   selectedApiKeyIndex?: number;
   autoApiKeySelection?: boolean;
   updatedAt: Timestamp;
+}
+
+export interface SecurityAlert {
+  id: string;
+  userId: string;
+  userEmail: string;
+  type: 'exploit' | 'moderation' | 'suspicious';
+  content: string;
+  severity: 'low' | 'medium' | 'high';
+  createdAt: Timestamp;
+  status: 'pending' | 'reviewed';
 }
 
 export interface Message {

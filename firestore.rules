@@ -103,6 +103,7 @@ service cloud.firestore {
 
     function isValidConfig(data) {
       return (!('geminiApiKeys' in data) || (data.geminiApiKeys is list)) &&
+             (!('groqApiKey' in data) || (data.groqApiKey is string)) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
@@ -159,6 +160,11 @@ service cloud.firestore {
     }
 
     match /moderation_reports/{reportId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /security_alerts/{alertId} {
       allow create: if isAuthenticated();
       allow read, update, delete: if isAdmin();
     }

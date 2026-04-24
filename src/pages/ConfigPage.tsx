@@ -8,7 +8,9 @@ import {
   Trash2, 
   Save,
   ChevronLeft,
-  Circle
+  Circle,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -28,16 +30,18 @@ import { AppUser, AppConfig, OperationType, handleFirestoreError, cn } from '../
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
-const ADMIN_EMAIL = 'wesley04012011w@gmail.com';
+const ADMIN_EMAILS = ['wesley04012011w@gmail.com', 'soparonosk37@gmail.com'];
 
 export default function ConfigPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
-  const [moderationLogs, setModerationLogs] = useState<any[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
   const [newKey, setNewKey] = useState('');
+  const [groqKey, setGroqKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
+  const [isSavingGroq, setIsSavingGroq] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -47,7 +51,7 @@ export default function ConfigPage() {
         return;
       }
 
-      if (user.email !== ADMIN_EMAIL) {
+      if (!ADMIN_EMAILS.includes(user.email || '')) {
         navigate('/');
         return;
       }
@@ -74,10 +78,13 @@ export default function ConfigPage() {
     const configDoc = doc(db, 'config', 'main');
     const unsubscribeConfig = onSnapshot(configDoc, (snapshot) => {
       if (snapshot.exists()) {
-        setConfig({ id: snapshot.id, ...snapshot.data() } as AppConfig);
+        const data = snapshot.data() as AppConfig;
+        setConfig({ id: snapshot.id, ...data } as AppConfig);
+        setGroqKey(data.groqApiKey || '');
       } else {
         setDoc(configDoc, {
           geminiApiKeys: [],
+          groqApiKey: '',
           updatedAt: serverTimestamp()
         });
       }
@@ -95,20 +102,20 @@ export default function ConfigPage() {
       console.warn("Could not fetch error logs:", error);
     });
 
-    // Listen to moderation logs
-    const modQuery = query(collection(db, 'moderation_reports'), orderBy('createdAt', 'desc'));
-    const unsubscribeMods = onSnapshot(modQuery, (snapshot) => {
-      const modLogsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setModerationLogs(modLogsList);
+    // Listen to security alerts
+    const secQuery = query(collection(db, 'security_alerts'), orderBy('createdAt', 'desc'));
+    const unsubscribeSec = onSnapshot(secQuery, (snapshot) => {
+      const secLogsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSecurityAlerts(secLogsList);
     }, (error) => {
-      console.warn("Could not fetch moderation logs:", error);
+      console.warn("Could not fetch security alerts:", error);
     });
 
     return () => {
       unsubscribeUsers();
       unsubscribeConfig();
       unsubscribeLogs();
-      unsubscribeMods();
+      unsubscribeSec();
     };
   }, [authChecked]);
 
@@ -123,6 +130,22 @@ export default function ConfigPage() {
       setNewKey('');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
+    }
+  };
+
+  const saveGroqKey = async () => {
+    if (!config) return;
+    setIsSavingGroq(true);
+    try {
+      await updateDoc(doc(db, 'config', 'main'), {
+        groqApiKey: groqKey.trim(),
+        updatedAt: serverTimestamp()
+      });
+      alert('✅ Chave Groq salva!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
+    } finally {
+      setIsSavingGroq(false);
     }
   };
 
@@ -411,50 +434,51 @@ export default function ConfigPage() {
         >
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-500/10 rounded-lg">
-                <Shield size={20} className="text-purple-500" />
+              <div className="p-2 bg-red-500/10 rounded-lg">
+                <AlertTriangle size={20} className="text-red-500" />
               </div>
-              <h2 className="text-xl font-bold">Alertas de Moderação (Atividade Suspeita)</h2>
+              <h2 className="text-xl font-bold">Alertas de Segurança (Anti-Exploit)</h2>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
-              <span className="text-[10px] font-bold text-purple-500 uppercase">{moderationLogs.length} CASOS</span>
+            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full">
+              <span className="text-[10px] font-bold text-red-500 uppercase">{securityAlerts.length} ALERTAS</span>
             </div>
           </div>
 
           <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-            {moderationLogs.length === 0 ? (
-              <p className="text-gray-600 text-sm italic py-4">Nenhuma mensagem suspensa ou perigosa encontrada.</p>
+            {securityAlerts.length === 0 ? (
+              <p className="text-gray-600 text-sm italic py-4">Nenhuma atividade suspeita detectada. IA de Segurança ativa ✅</p>
             ) : (
-              moderationLogs.map((modLog) => (
-                <div key={modLog.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative">
+              securityAlerts.map((modLog) => (
+                <div key={modLog.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative transition-all hover:border-red-500/20">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="text-sm font-bold text-purple-400">Auditoria Automática</h3>
-                      <p className="text-[10px] text-gray-400 mt-1">Chat associado: {modLog.chatId}</p>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-black uppercase text-red-400">Tentativa de Exploit</h3>
+                        <span className="text-[8px] px-1.5 py-0.5 bg-red-500 text-white rounded font-black">{modLog.severity || 'HIGH'}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1">Usuário: {modLog.userEmail} ({modLog.userId})</p>
                     </div>
                     <p className="text-[10px] text-gray-500 font-mono">
                       {modLog.createdAt?.toDate().toLocaleString()}
                     </p>
                   </div>
-                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl mt-2 overflow-x-auto">
-                    <p className="text-xs text-white mb-2 font-bold opacity-50">Log do Modelo:</p>
-                    <code className="text-xs text-purple-300 font-mono whitespace-pre-wrap leading-relaxed block">
-                      {modLog.report}
-                    </code>
+                  <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-xl mt-2">
+                    <p className="text-xs text-red-300 font-mono whitespace-pre-wrap leading-relaxed">
+                      {modLog.content}
+                    </p>
                   </div>
                   <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-500">
-                      Caso gerado após mensagem enviada pelo usuário na UI.
+                    <span className="text-[10px] text-gray-600 italic">
+                      Detectado pelo mecanismo de segurança Groq AI.
                     </span>
                     <button 
                       onClick={() => {
-                        // Deletar o log de moderação
-                        const docRef = doc(db, 'moderation_reports', modLog.id);
+                        const docRef = doc(db, 'security_alerts', modLog.id);
                         import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
                       }}
                       className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
                     >
-                      ARQUIVAR CASO
+                      ARQUIVAR ALERTA
                     </button>
                   </div>
                 </div>
@@ -462,6 +486,47 @@ export default function ConfigPage() {
             )}
           </div>
         </motion.section>
+
+        {/* API Keys Management */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/10 rounded-lg">
+                  <Plus size={20} className="text-orange-500" />
+                </div>
+                <h2 className="text-xl font-bold">Groq AI Security Key</h2>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <input 
+                  type="password" 
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                  placeholder="Seu Groq API Key (gsk_...)"
+                  className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500/30 transition-all font-mono"
+                />
+                <button 
+                  onClick={saveGroqKey}
+                  disabled={isSavingGroq}
+                  className="bg-orange-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-500 transition-all flex items-center gap-2 border-transparent"
+                >
+                  {isSavingGroq ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
+                  SALVAR
+                </button>
+              </div>
+              <p className="text-[9px] text-gray-500 leading-relaxed italic">
+                A Groq é usada para analisar prompts em tempo real e detectar tentativas de exploit antes mesmo de chegarem ao Gemini.
+              </p>
+            </div>
+          </motion.section>
+        </div>
       </div>
 
       <style>{`

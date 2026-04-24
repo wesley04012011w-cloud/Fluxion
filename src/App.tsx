@@ -21,6 +21,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
+import { checkSecurityWithGroq } from './services/groqService';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
@@ -33,6 +34,7 @@ import AuthModal from './components/AuthModal';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
 import SettingsPage from './pages/SettingsPage';
+import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -432,7 +434,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       });
       await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() });
 
-      // Removed AI moderation check to save quota
       setIsGenerating(true);
       setStreamingText('');
 
@@ -464,30 +465,73 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         createdAt: serverTimestamp()
       });
 
+      // 1. Audit conversation with Groq (NORMAL CASE)
+      const auditResult = await checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true });
+      
+      // Se o auditor Groq detectar algo pesado que passou pelo Gemini, forçamos um log extra se necessário (embora o groqService já logue)
+      console.log('Audit Normal Result:', auditResult);
+
       setIsGenerating(false);
       setStreamingText('');
     } catch (error: any) {
-      console.error('Error:', error);
+      console.error('Error in send message:', error);
       setIsGenerating(false);
       setStreamingText('');
       
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isSafetyError = errorMessage.toLowerCase().includes('safety') || errorMessage.toLowerCase().includes('finish_reason_safety');
+
+      // LOG IMEDIATO PARA O PAINEL SE FOR BLOQUEIO DE SEGURANÇA
+      if (isSafetyError) {
+        await addDoc(collection(db, 'security_alerts'), {
+          userId: user.uid,
+          userEmail: user.email || 'Anônimo',
+          type: 'jailbreak_attempt',
+          content: `MENSAGEM BLOQUEADA PELO GEMINI: ${text}`,
+          analysis: 'O filtro de segurança do Google (Gemini) barrou esta mensagem por conteúdo impróprio ou tentativa de bypass.',
+          severity: 'high',
+          createdAt: serverTimestamp(),
+          status: 'pending',
+          flow: {
+            readMessage: true,
+            responseSent: false,
+            blocked: true,
+            blockedBy: 'Gemini Safety Filter',
+            error: errorMessage
+          }
+        });
+      }
+
+      // 2. Audit conversation with Groq (ERROR/SAFETY CASE)
+      checkSecurityWithGroq(text, `[ERRO/BLOQUEIO]: ${errorMessage}`, user.uid, user.email || 'Anônimo', { 
+        success: false, 
+        error: errorMessage, 
+        isSafetyError: isSafetyError 
+      }).catch(err => console.error("Groq Check error (on fail):", err));
+
       // Error Reporting System
       try {
         await addDoc(collection(db, 'error_logs'), {
           userId: user.uid,
           userEmail: user.email,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
           chatId: chatId,
           createdAt: serverTimestamp(),
           resolved: false,
-          model: 'gemini-3-flash-preview'
+          model: selectedModel,
+          isSafetyAlert: isSafetyError
         });
         
+        let userFeedback = `❌ Ops, ocorreu um erro de conexão ou de API ao gerar a resposta.`;
+        if (isSafetyError) {
+          userFeedback = `🛡️ **ALERTA DE SEGURANÇA**\n\nO Fluxion identificou que sua solicitação viola nossas diretrizes de segurança. Esta interação foi registrada e enviada para revisão dos administradores.`;
+        }
+
         await addDoc(collection(db, `chats/${chatId}/messages`), {
           chatId,
           userId: user.uid,
           role: 'model',
-          content: `❌ Ops, ocorreu um erro interno de conexão or de API ao gerar a resposta.\n\nUm relatório detalhado foi enviado ao administrador do sistema para averiguação. Tente enviar de novo ou aguarde o suporte analisar o problema.`,
+          content: `${userFeedback}\n\nRelatório: ${errorMessage.slice(0, 100)}...`,
           createdAt: serverTimestamp()
         });
       } catch(logError) {
@@ -559,6 +603,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         <Routes>
           <Route path="/home" element={<ConfigPage />} />
           <Route path="/config" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/" element={
             <motion.div 
               initial={isOptimized ? false : { opacity: 0 }}
