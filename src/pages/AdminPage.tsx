@@ -12,7 +12,9 @@ import {
   Save,
   CheckCircle,
   Clock,
-  ExternalLink
+  ExternalLink,
+  MessageSquare,
+  X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,7 +31,9 @@ import {
   limit,
   Timestamp,
   setDoc,
-  addDoc
+  addDoc,
+  where,
+  getDocs
 } from 'firebase/firestore';
 
 const ADMIN_EMAILS = ["wesley04012011w@gmail.com", "soparonosk37@gmail.com"];
@@ -51,6 +55,10 @@ export default function AdminPage() {
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '' });
   const [isPublishingAnnouncement, setIsPublishingAnnouncement] = useState(false);
+
+  const [viewingChatId, setViewingChatId] = useState<string | null>(null);
+  const [viewingChatMessages, setViewingChatMessages] = useState<any[]>([]);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
 
   const navigate = useNavigate();
 
@@ -202,41 +210,52 @@ export default function AdminPage() {
     }
   };
 
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
+
   const banUser = async (uid: string) => {
-    if (!window.confirm('🚫 BANIR PERMANENTEMENTE este usuário?')) return;
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      if (processingAction) return;
+      setProcessingAction('ban_' + uid);
+      await setDoc(doc(db, 'users', uid), {
         isBanned: true,
         bannedAt: Timestamp.now()
-      });
-      alert('✅ Usuário banido com sucesso!');
+      }, { merge: true });
     } catch (e: any) {
-      alert('❌ Erro: ' + e.message);
+      alert('❌ Erro crítico ao banir: ' + e.code + ' - ' + e.message);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
   const blockUser = async (uid: string, h: number) => {
     try {
+      if (processingAction) return;
+      setProcessingAction('block_' + uid);
       const until = new Date();
       until.setHours(until.getHours() + h);
-      await updateDoc(doc(db, 'users', uid), {
+      await setDoc(doc(db, 'users', uid), {
         blockedUntil: Timestamp.fromDate(until)
-      });
-      alert(`⏳ Bloqueado por ${h} horas!`);
+      }, { merge: true });
     } catch (e: any) {
-      alert('❌ Erro: ' + e.message);
+      alert('❌ Erro crítico ao bloquear: ' + e.code + ' - ' + e.message);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
   const unblockUser = async (uid: string) => {
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      if (processingAction) return;
+      setProcessingAction('unblock_' + uid);
+      await setDoc(doc(db, 'users', uid), {
         isBanned: false,
-        blockedUntil: null
-      });
-      alert('✅ Usuário liberado!');
+        blockedUntil: null,
+        bannedAt: null
+      }, { merge: true });
     } catch (e: any) {
-      alert('❌ Erro: ' + e.message);
+      alert('❌ Erro crítico ao liberar: ' + e.code + ' - ' + e.message);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
@@ -271,6 +290,48 @@ export default function AdminPage() {
       });
     } catch (e: any) {
       alert('❌ Erro: ' + e.message);
+    }
+  };
+
+  const openChatView = async (chatId?: string) => {
+    if (!chatId) {
+      alert('Id do chat não encontrado para este alerta.');
+      return;
+    }
+    setViewingChatId(chatId);
+    setViewingChatMessages([]);
+    setIsLoadingChat(true);
+    try {
+      const q = query(collection(db, `chats/${chatId}/messages`), orderBy('createdAt', 'asc'));
+      const unsub = onSnapshot(q, (snapshot) => {
+        setViewingChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setIsLoadingChat(false);
+      });
+      // Not storing unsub for now, simple view
+    } catch (e: any) {
+      alert('❌ Erro ao abrir chat: ' + e.message);
+      setIsLoadingChat(false);
+    }
+  };
+
+  const openRecentChatView = async (userId: string) => {
+    setViewingChatId('Procurando...');
+    setViewingChatMessages([]);
+    setIsLoadingChat(true);
+    try {
+      const qChats = query(collection(db, 'chats'), where('userId', '==', userId), orderBy('updatedAt', 'desc'), limit(1));
+      const snap = await getDocs(qChats);
+      if (snap.empty) {
+        alert('Nenhum chat encontrado para este usuário.');
+        setViewingChatId(null);
+        setIsLoadingChat(false);
+        return;
+      }
+      openChatView(snap.docs[0].id);
+    } catch (e: any) {
+      alert('❌ Erro ao buscar chat recente: ' + e.message);
+      setViewingChatId(null);
+      setIsLoadingChat(false);
     }
   };
 
@@ -408,6 +469,21 @@ export default function AdminPage() {
                             Resolver
                           </button>
                         )}
+                        {alert.chatId ? (
+                          <button 
+                            onClick={() => openChatView(alert.chatId)}
+                            className="text-[9px] font-bold text-blue-500 hover:bg-blue-500/10 transition-all uppercase tracking-widest border border-blue-500/20 px-3 py-1 rounded-md"
+                          >
+                            Ver Chat
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => openRecentChatView(alert.userId)}
+                            className="text-[9px] font-bold text-blue-400 hover:bg-blue-400/10 transition-all uppercase tracking-widest border border-blue-400/20 px-3 py-1 rounded-md opacity-80"
+                          >
+                            Ver Último Chat
+                          </button>
+                        )}
                         <span className="text-[8px] text-gray-600 font-mono italic">ID: {alert.userId.slice(0, 8)}...</span>
                       </div>
                     </div>
@@ -533,18 +609,19 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="flex gap-2 w-full mt-2 lg:mt-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
                       {isSuspended ? (
                         <button 
                           onClick={() => unblockUser(u.uid)}
-                          className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 text-[9px] font-black py-1.5 rounded-lg border border-green-500/20 uppercase"
+                          disabled={processingAction === 'unblock_' + u.uid}
+                          className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 text-[9px] font-black py-1.5 rounded-lg border border-green-500/20 uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          LIBERAR
+                          {processingAction === 'unblock_' + u.uid ? 'PROCESSANDO...' : 'LIBERAR'}
                         </button>
                       ) : (
                         <>
                           <div className="flex-1 relative group/menu">
-                            <button className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[9px] font-black py-1.5 rounded-lg border border-orange-500/20 uppercase">
+                            <button disabled={processingAction === 'block_' + u.uid || processingAction === 'ban_' + u.uid} className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[9px] font-black py-1.5 rounded-lg border border-orange-500/20 uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               BLOQUEAR
                             </button>
                             <div className="absolute bottom-full left-0 mb-2 hidden group-hover/menu:block bg-zinc-900 border border-white/10 p-1 rounded-xl shadow-2xl z-50 min-w-[120px]">
@@ -552,7 +629,7 @@ export default function AdminPage() {
                                 <button 
                                   key={h}
                                   onClick={() => blockUser(u.uid, h)}
-                                  className="block w-full text-left px-3 py-2 hover:bg-white/5 text-[9px] font-bold"
+                                  className="block w-full text-left px-3 py-2 hover:bg-white/5 text-[9px] font-bold cursor-pointer"
                                 >
                                   {h < 24 ? `🕒 ${h} HORAS` : `📅 ${h/24} DIAS`}
                                 </button>
@@ -561,9 +638,10 @@ export default function AdminPage() {
                           </div>
                           <button 
                             onClick={() => banUser(u.uid)}
-                            className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-black py-1.5 rounded-lg border border-red-500/20 uppercase"
+                            disabled={processingAction === 'ban_' + u.uid || processingAction === 'block_' + u.uid}
+                            className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-black py-1.5 rounded-lg border border-red-500/20 uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            BANIR
+                            {processingAction === 'ban_' + u.uid ? 'BANINDO...' : 'BANIR'}
                           </button>
                         </>
                       )}
@@ -691,6 +769,47 @@ export default function AdminPage() {
                 </div>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Visão de Chat */}
+      <AnimatePresence>
+        {viewingChatId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex flex-col p-4 md:p-10"
+          >
+            <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-4xl mx-auto flex flex-col flex-1 shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} className="text-blue-400" />
+                  <h2 className="text-sm font-bold text-white">Visualização de Chat ({viewingChatId})</h2>
+                </div>
+                <button
+                  onClick={() => setViewingChatId(null)}
+                  className="bg-white/5 hover:bg-white/10 text-white p-2 rounded-xl transition-all border border-white/5"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+                {isLoadingChat ? (
+                  <div className="h-full flex items-center justify-center text-gray-500 font-mono text-sm">Carregando mensagens...</div>
+                ) : viewingChatMessages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-gray-500 font-mono text-sm">Nenhuma mensagem neste chat.</div>
+                ) : (
+                  viewingChatMessages.map((msg, idx) => (
+                    <div key={idx} className={cn("max-w-[85%] rounded-2xl p-4", msg.role === 'user' ? "ml-auto bg-blue-500/10 border border-blue-500/20 text-blue-100" : "mr-auto bg-white/5 border border-white/10 text-gray-300")}>
+                      <span className="block text-[10px] font-bold mb-1 opacity-50 uppercase">{msg.role === 'user' ? 'Usuário' : 'Fluxion'}</span>
+                      <div className="text-xs whitespace-pre-wrap font-mono leading-relaxed">{msg.content}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

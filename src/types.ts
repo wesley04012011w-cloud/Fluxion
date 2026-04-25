@@ -44,6 +44,7 @@ export interface SecurityAlert {
   id: string;
   userId: string;
   userEmail: string;
+  chatId?: string;
   type: 'exploit' | 'moderation' | 'suspicious';
   content: string;
   severity: 'low' | 'medium' | 'high';

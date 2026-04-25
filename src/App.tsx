@@ -42,6 +42,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authLoaded, setAuthLoaded] = useState(false);
+  const [userStatusLoaded, setUserStatusLoaded] = useState(false);
   const [chats, setChats] = useState<Chat[]>([]);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -145,7 +147,11 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       console.log("Auth state changed:", u ? u.email : "deslogado");
       setUser(u);
-      setLoading(false);
+      setAuthLoaded(true);
+      
+      if (!u) {
+        setUserStatusLoaded(true);
+      }
       
       if (u) {
         // Sync offline scripts to Firestore on login
@@ -172,7 +178,8 @@ export default function App() {
     });
 
     const timeout = setTimeout(() => {
-      setLoading(false);
+      setAuthLoaded(true);
+      setUserStatusLoaded(true);
     }, 5000);
 
     return () => {
@@ -187,6 +194,7 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setUserStatus(null);
+      setUserStatusLoaded(true);
       return;
     }
 
@@ -198,7 +206,13 @@ export default function App() {
           banned: data.isBanned || false,
           blockedUntil: data.blockedUntil
         });
+      } else {
+        setUserStatus({ banned: false });
       }
+      setUserStatusLoaded(true);
+    }, (err) => {
+      console.error("User status error", err);
+      setUserStatusLoaded(true);
     });
 
     // Batimento cardíaco de presença
@@ -517,7 +531,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
       // 1. Audit conversation with Groq (NORMAL CASE)
       console.log('🛡️ Triggering security audit for message:', text.slice(0, 50));
-      const auditResult = await checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true });
+      const auditResult = await checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true }, chatId);
       
       // Se o auditor Groq detectar algo pesado que passou pelo Gemini, forçamos um log extra se necessário (embora o groqService já logue)
       console.log('Audit Normal Result:', auditResult);
@@ -537,6 +551,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         await addDoc(collection(db, 'security_alerts'), {
           userId: user.uid,
           userEmail: user.email || 'Anônimo',
+          chatId: chatId || null,
           type: 'jailbreak_attempt',
           content: `MENSAGEM BLOQUEADA PELO GEMINI: ${text}`,
           analysis: 'O filtro de segurança do Google (Gemini) barrou esta mensagem por conteúdo impróprio ou tentativa de bypass.',
@@ -558,7 +573,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         success: false, 
         error: errorMessage, 
         isSafetyError: isSafetyError 
-      }).catch(err => console.error("Groq Check error (on fail):", err));
+      }, chatId).catch(err => console.error("Groq Check error (on fail):", err));
 
       // Error Reporting System
       try {
@@ -640,7 +655,17 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
+  if (userStatus?.banned) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center font-sans text-white text-center p-4">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white/80">
+          Usuário banido por violação das diretrizes
+        </h1>
+      </div>
+    );
+  }
+
+  if (!authLoaded || !userStatusLoaded) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full animate-spin"></div>
