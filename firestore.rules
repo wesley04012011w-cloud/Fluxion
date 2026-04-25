@@ -194,8 +194,9 @@ service cloud.firestore {
     }
 
     match /banned_ips/{ip} {
-      allow read: if true; // Permitir que qualquer um verifique se o IP está banido
-      allow write: if isAdmin() && isValidBannedIP(request.resource.data);
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidBannedIP(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     // Default deny

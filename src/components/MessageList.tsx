@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 import { Message, cn } from '../types';
+import { toast } from 'sonner';
 
 const MessageItem = React.memo(({ 
   msg, 
@@ -89,7 +90,10 @@ const MessageItem = React.memo(({
                         <Download size={10} /> DL
                       </button>
                       <button 
-                        onClick={() => navigator.clipboard.writeText(codeContent)}
+                        onClick={() => {
+                          navigator.clipboard.writeText(codeContent);
+                          toast.success("Código copiado!");
+                        }}
                         className="p-1 hover:bg-white/10 rounded text-[9px] font-bold text-white transition-all"
                       >
                         COPY

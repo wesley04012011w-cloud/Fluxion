@@ -19,6 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppUser, OperationType, handleFirestoreError, cn, SecurityAlert, AppConfig } from '../types';
+import { Toaster, toast } from 'sonner';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
@@ -52,6 +53,7 @@ export default function AdminPage() {
   const [bannedIps, setBannedIps] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [accessLogs, setAccessLogs] = useState<any[]>([]);
   
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
@@ -61,6 +63,10 @@ export default function AdminPage() {
   const [viewingChatId, setViewingChatId] = useState<string | null>(null);
   const [viewingChatMessages, setViewingChatMessages] = useState<any[]>([]);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+
+  const [expandedUserUid, setExpandedUserUid] = useState<string | null>(null);
+  const [userChats, setUserChats] = useState<Record<string, any[]>>({});
+  const [loadingUserChats, setLoadingUserChats] = useState<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -131,6 +137,14 @@ export default function AdminPage() {
       setBannedIps(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    // Fetch Access Logs
+    const accessUnsubscribe = onSnapshot(
+      query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)),
+      (snapshot) => {
+        setAccessLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    );
+
     return () => {
       configUnsubscribe();
       usersUnsubscribe();
@@ -138,6 +152,7 @@ export default function AdminPage() {
       errorsUnsubscribe();
       announcementsUnsubscribe();
       bannedIpsUnsubscribe();
+      accessUnsubscribe();
     };
   }, [isAdmin]);
 
@@ -185,10 +200,10 @@ export default function AdminPage() {
         status: 'pending'
       });
       console.log('Document written with ID: ', alertRef.id);
-      alert('✅ Alerta de teste enviado com sucesso! Verifique a lista de alertas.');
+      toast.success('Alerta de teste enviado!');
     } catch (e: any) {
       console.error('Error adding document: ', e);
-      alert(`❌ Erro ao enviar log: ${e.message}`);
+      toast.error(`Erro ao enviar log: ${e.message}`);
     }
   };
 
@@ -200,9 +215,10 @@ export default function AdminPage() {
         groqApiKey: groqKey,
         updatedAt: Timestamp.now()
       }, { merge: true });
-      alert('✅ Chave Groq salva com sucesso!');
+      toast.success('Chave Groq salva com sucesso!');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
+      toast.error('Erro ao salvar chave.');
     } finally {
       setIsSavingConfig(false);
     }
@@ -228,8 +244,9 @@ export default function AdminPage() {
         isBanned: true,
         bannedAt: Timestamp.now()
       }, { merge: true });
+      toast.success("Usuário banido permanentemente.");
     } catch (e: any) {
-      alert('❌ Erro crítico ao banir: ' + e.code + ' - ' + e.message);
+      toast.error('Erro crítico ao banir: ' + e.message);
     } finally {
       setProcessingAction(null);
     }
@@ -247,9 +264,9 @@ export default function AdminPage() {
         bannedBy: user?.uid,
         reason: 'Violação persistente'
       });
-      alert(`✅ IP ${ip} banido!`);
+      toast.success(`IP ${ip} banido com sucesso!`);
     } catch (e: any) {
-      alert('❌ Erro ao banir IP: ' + e.message);
+      toast.error('Erro ao banir IP: ' + e.message);
     } finally {
       setProcessingAction(null);
     }
@@ -261,8 +278,9 @@ export default function AdminPage() {
       setProcessingAction('unbanip_' + ip);
       const ipKey = ip.replace(/\./g, '_');
       await deleteDoc(doc(db, 'banned_ips', ipKey));
+      toast.success(`IP ${ip} desbanido.`);
     } catch (e: any) {
-      alert('❌ Erro ao desbanir IP: ' + e.message);
+      toast.error('Erro ao desbanir IP: ' + e.message);
     } finally {
       setProcessingAction(null);
     }
@@ -373,6 +391,28 @@ export default function AdminPage() {
       alert('❌ Erro ao buscar chat recente: ' + e.message);
       setViewingChatId(null);
       setIsLoadingChat(false);
+    }
+  };
+
+  const loadAllUserChats = async (uid: string) => {
+    if (expandedUserUid === uid) {
+      setExpandedUserUid(null);
+      return;
+    }
+
+    setExpandedUserUid(uid);
+    if (!userChats[uid]) {
+      setLoadingUserChats(uid);
+      try {
+        const q = query(collection(db, 'chats'), where('userId', '==', uid), orderBy('updatedAt', 'desc'));
+        const snap = await getDocs(q);
+        const chatsList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setUserChats(prev => ({ ...prev, [uid]: chatsList }));
+      } catch (e: any) {
+        toast.error("Erro ao carregar chats: " + e.message);
+      } finally {
+        setLoadingUserChats(null);
+      }
     }
   };
 
@@ -560,13 +600,80 @@ export default function AdminPage() {
           {/* Sidebar Area */}
           <div className="space-y-6">
             
+            {/* Banned IPs - MOVED TO TOP OF SIDEBAR */}
+            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
+              <div className="p-4 border-b border-white/5 bg-white/[0.01]">
+                <div className="flex items-center gap-3">
+                   <Shield className="text-red-500" size={18} />
+                   <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">IPs Banidos (Lista Negra)</h2>
+                </div>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                {bannedIps.length === 0 ? (
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum IP na lista negra</div>
+                ) : (
+                  bannedIps.map((bip) => (
+                    <div key={bip.id} className="p-3 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-mono text-red-400">{bip.ip}</span>
+                        <span className="text-[8px] text-gray-600 uppercase font-bold">{bip.bannedAt?.toDate().toLocaleString()}</span>
+                      </div>
+                      <button 
+                        onClick={() => unbanIp(bip.ip)}
+                        disabled={!!processingAction}
+                        className="text-[9px] font-black text-green-500 hover:bg-green-500/10 px-2 py-1 rounded border border-green-500/10 uppercase"
+                      >
+                        {processingAction === 'unbanip_' + bip.ip ? '...' : 'REMOVER'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+            
+            {/* Access Logs */}
+            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
+              <div className="p-4 border-b border-white/5 bg-white/[0.01]">
+                <div className="flex items-center gap-3">
+                   <Activity className="text-blue-500" size={18} />
+                   <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Logs de Acesso Realtime</h2>
+                </div>
+              </div>
+              <div className="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                {accessLogs.length === 0 ? (
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum log detectado</div>
+                ) : (
+                  accessLogs.map((log) => (
+                    <div key={log.id} className="p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[9px] font-black text-gray-300 uppercase truncate max-w-[150px]">{log.email}</span>
+                        <span className="text-[8px] font-mono text-gray-600">
+                          {log.timestamp?.toDate().toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                         <span className="text-[9px] font-mono text-blue-400/80">{log.ip}</span>
+                         <button 
+                           onClick={() => banIp(log.ip)}
+                           disabled={bannedIps.some(bi => bi.ip === log.ip)}
+                           className="text-[8px] font-bold text-red-500 hover:text-red-400 uppercase tracking-tighter disabled:opacity-20"
+                         >
+                           {bannedIps.some(bi => bi.ip === log.ip) ? 'Bloqueado' : 'Banir'}
+                         </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
             {/* Groq Integration */}
             <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
               <div className="flex items-center gap-3 mb-6">
                  <div className="p-2 bg-orange-500/10 rounded-lg ui-border border-orange-500/20 text-orange-400">
                     <KeyIcon size={18} />
                  </div>
-                 <h2 className="text-sm font-black uppercase tracking-tight">Groq API Security</h2>
+                 <h2 className="text-sm font-black uppercase tracking-tight">Groq AI Security</h2>
               </div>
               <p className="text-[10px] text-gray-500 mb-4 leading-relaxed font-medium capitalize">
                 Configure a chave da Groq para ativar a análise de segurança AI em tempo real.
@@ -603,8 +710,82 @@ export default function AdminPage() {
                   className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-[10px] py-3 rounded-xl transition-all flex items-center justify-center gap-2 mt-2"
                 >
                   {isSavingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                  SALVAR CHAVE
+                  SALVAR CHAVE GROQ
                 </button>
+              </div>
+            </section>
+
+            {/* Gemini API Keys */}
+            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
+               <div className="flex items-center gap-3 mb-6">
+                 <div className="p-2 bg-blue-500/10 rounded-lg ui-border border-blue-500/20 text-blue-400">
+                    <Activity size={18} />
+                 </div>
+                 <h2 className="text-sm font-black uppercase tracking-tight">Gemini AI Engine</h2>
+              </div>
+              <div className="space-y-4">
+                 <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Estado de Chaves</span>
+                    <button 
+                      onClick={async () => {
+                        const newAuto = appConfig?.autoApiKeySelection === false;
+                        await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
+                      }}
+                      className={cn(
+                        "text-[9px] font-black px-3 py-1 rounded-full border transition-all",
+                        appConfig?.autoApiKeySelection !== false 
+                          ? "bg-green-500/10 text-green-500 border-green-500/20"
+                          : "bg-gray-500/10 text-gray-500 border-gray-500/20"
+                      )}
+                    >
+                      {appConfig?.autoApiKeySelection !== false ? 'RODÍZIO AUTO: LIGADO' : 'SELEÇÃO MANUAL: ATIVA'}
+                    </button>
+                 </div>
+                 
+                 <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar">
+                    {appConfig?.geminiApiKeys?.map((key, idx) => (
+                      <div key={idx} className="bg-black/30 p-2 rounded-lg border border-white/5 flex items-center justify-between group">
+                         <code className="text-[9px] font-mono text-gray-400 truncate max-w-[200px]">
+                           {key.slice(0, 10)}...{key.slice(-5)}
+                         </code>
+                         <div className="flex items-center gap-2">
+                            {appConfig.selectedApiKeyIndex === idx && (
+                              <span className="text-[8px] font-black text-green-500 uppercase">ATIVO</span>
+                            )}
+                            <button 
+                              onClick={async () => {
+                                const keys = appConfig.geminiApiKeys.filter((_, i) => i !== idx);
+                                await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
+                              }}
+                              className="p-1 hover:bg-red-500/10 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              EXCLUIR
+                            </button>
+                         </div>
+                      </div>
+                    ))}
+                 </div>
+                 
+                 <div className="pt-2">
+                    <input 
+                       id="newGeminiKey"
+                       type="password"
+                       placeholder="Adicionar nova chave Gemini..."
+                       className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono mb-2"
+                       onKeyDown={async (e) => {
+                         if (e.key === 'Enter') {
+                           const el = e.currentTarget;
+                           const val = el.value.trim();
+                           if (!val) return;
+                           const keys = [...(appConfig?.geminiApiKeys || []), val];
+                           await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
+                           el.value = '';
+                           toast.success('Chave Gemini adicionada.');
+                         }
+                       }}
+                    />
+                    <p className="text-[8px] text-gray-600 italic">Pressione Enter para salvar nova chave.</p>
+                 </div>
               </div>
             </section>
 
@@ -650,13 +831,23 @@ export default function AdminPage() {
                         {u.lastIp && (
                           <div className="flex items-center gap-2 mt-1">
                              <span className="text-[8px] bg-white/5 px-2 py-0.5 rounded text-gray-400 font-mono">IP: {u.lastIp}</span>
-                             <button 
-                               onClick={() => banIp(u.lastIp!)}
-                               disabled={!!processingAction || bannedIps.some(bi => bi.ip === u.lastIp)}
-                               className="text-[8px] font-bold text-red-500/60 hover:text-red-500 uppercase disabled:opacity-30"
-                             >
-                               {bannedIps.some(bi => bi.ip === u.lastIp) ? 'Midi bloqueado' : 'BANIR IP'}
-                             </button>
+                             {bannedIps.some(bi => bi.ip === u.lastIp) ? (
+                               <button 
+                                 onClick={() => unbanIp(u.lastIp!)}
+                                 disabled={!!processingAction}
+                                 className="text-[8px] font-bold text-green-500 hover:text-green-400 uppercase disabled:opacity-30"
+                               >
+                                 DESBANIR IP
+                               </button>
+                             ) : (
+                               <button 
+                                 onClick={() => banIp(u.lastIp!)}
+                                 disabled={!!processingAction}
+                                 className="text-[8px] font-bold text-red-500/60 hover:text-red-500 uppercase disabled:opacity-30"
+                               >
+                                 BANIR IP
+                               </button>
+                             )}
                           </div>
                         )}
                       </div>
@@ -673,6 +864,17 @@ export default function AdminPage() {
                         </button>
                       ) : (
                         <>
+                          <button 
+                            onClick={() => loadAllUserChats(u.uid)}
+                            className={cn(
+                              "flex-1 text-[9px] font-black py-1.5 rounded-lg border uppercase transition-all",
+                              expandedUserUid === u.uid 
+                                ? "bg-blue-500 text-white border-blue-400" 
+                                : "bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border-blue-500/20"
+                            )}
+                          >
+                            {loadingUserChats === u.uid ? '...' : (expandedUserUid === u.uid ? 'Fechar' : 'Chats')}
+                          </button>
                           <div className="flex-1 relative group/menu">
                             <button disabled={processingAction === 'block_' + u.uid || processingAction === 'ban_' + u.uid} className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[9px] font-black py-1.5 rounded-lg border border-orange-500/20 uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               BLOQUEAR
@@ -689,49 +891,87 @@ export default function AdminPage() {
                               ))}
                             </div>
                           </div>
-                          <button 
-                            onClick={() => banUser(u.uid)}
-                            disabled={processingAction === 'ban_' + u.uid || processingAction === 'block_' + u.uid}
-                            className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-black py-1.5 rounded-lg border border-red-500/20 uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {processingAction === 'ban_' + u.uid ? 'BANINDO...' : 'BANIR'}
-                          </button>
                         </>
                       )}
                     </div>
+
+                    {/* Chat Dropdown Panel */}
+                    <AnimatePresence>
+                      {expandedUserUid === u.uid && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden bg-black/40 rounded-xl border border-white/5 mt-2"
+                        >
+                          <div className="p-4 space-y-2">
+                             <div className="flex items-center justify-between mb-3">
+                                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Investigação de Chats</span>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => {
+                                       navigator.clipboard.writeText(u.uid);
+                                       toast.success("UID copiado!");
+                                    }}
+                                    className="text-[8px] font-bold text-gray-500 hover:text-white transition-colors uppercase"
+                                  >
+                                    Copiar ID
+                                  </button>
+                                  <span className="text-[9px] font-bold text-gray-500 px-2 py-0.5 bg-white/5 rounded-full">
+                                    {userChats[u.uid]?.length || 0} TOTAL
+                                  </span>
+                                </div>
+                             </div>
+                             
+                             <div className="flex gap-2 mb-3">
+                                <button
+                                  onClick={() => banUser(u.uid)}
+                                  disabled={processingAction === 'ban_' + u.uid}
+                                  className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 text-[9px] font-black py-2 rounded-lg border border-red-500/20 uppercase transition-all"
+                                >
+                                  {processingAction === 'ban_' + u.uid ? 'BANINDO...' : '🔨 BANIR ESTE USUÁRIO'}
+                                </button>
+                                <button
+                                  onClick={() => banIp(u.lastIp!)}
+                                  disabled={!u.lastIp || bannedIps.some(bi => bi.ip === u.lastIp)}
+                                  className="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-400 text-[9px] font-black py-2 rounded-lg border border-red-900/20 uppercase transition-all disabled:opacity-30"
+                                >
+                                  {bannedIps.some(bi => bi.ip === u.lastIp) ? 'IP JÁ BANIDO' : '🚫 BANIR IP'}
+                                </button>
+                             </div>
+                             
+                             {loadingUserChats === u.uid ? (
+                               <div className="py-4 text-center text-gray-600 text-[9px] font-bold uppercase animate-pulse">Consultando banco de dados...</div>
+                             ) : !userChats[u.uid] || userChats[u.uid].length === 0 ? (
+                               <div className="py-4 text-center text-gray-600 text-[9px] font-bold uppercase">Nenhum chat encontrado</div>
+                             ) : (
+                               <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                 {userChats[u.uid].map((chat) => (
+                                   <button
+                                     key={chat.id}
+                                     onClick={() => openChatView(chat.id)}
+                                     className="w-full text-left p-3 hover:bg-white/5 rounded-lg flex items-center justify-between group/chat"
+                                   >
+                                      <div>
+                                        <p className="text-[11px] font-bold text-gray-200 truncate max-w-[180px]">{chat.title || 'Chat s/ título'}</p>
+                                        <p className="text-[9px] text-gray-600 font-mono">{chat.createdAt?.toDate().toLocaleDateString()}</p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[8px] font-black text-gray-500 bg-white/5 px-2 py-0.5 rounded uppercase">
+                                          {chat.mode || 'Normal'}
+                                        </span>
+                                        <MessageSquare size={12} className="text-gray-600 group-hover/chat:text-blue-400 transition-colors" />
+                                      </div>
+                                   </button>
+                                 ))}
+                               </div>
+                             )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )})}
-              </div>
-            </section>
-
-            {/* Banned IPs */}
-            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
-              <div className="p-4 border-b border-white/5 bg-white/[0.01]">
-                <div className="flex items-center gap-3">
-                   <Shield className="text-red-500" size={18} />
-                   <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">IPs Banidos</h2>
-                </div>
-              </div>
-              <div className="max-h-[200px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
-                {bannedIps.length === 0 ? (
-                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum IP na lista negra</div>
-                ) : (
-                  bannedIps.map((bip) => (
-                    <div key={bip.id} className="p-3 flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-mono text-red-400">{bip.ip}</span>
-                        <span className="text-[8px] text-gray-600 uppercase font-bold">{bip.bannedAt?.toDate().toLocaleString()}</span>
-                      </div>
-                      <button 
-                        onClick={() => unbanIp(bip.ip)}
-                        disabled={!!processingAction}
-                        className="text-[9px] font-black text-green-500 hover:bg-green-500/10 px-2 py-1 rounded border border-green-500/10 uppercase"
-                      >
-                        {processingAction === 'unbanip_' + bip.ip ? '...' : 'REMOVER'}
-                      </button>
-                    </div>
-                  ))
-                )}
               </div>
             </section>
 

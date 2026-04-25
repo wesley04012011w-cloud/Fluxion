@@ -6,7 +6,7 @@ import {
   Bell
 } from 'lucide-react';
 import { auth, db, signOut } from './firebase';
-import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
+import { onAuthStateChanged, User, getRedirectResult, signOut } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 
@@ -19,7 +19,8 @@ import {
   deleteDoc,
   updateDoc,
   setDoc,
-  Timestamp
+  Timestamp,
+  limit
 } from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
 import { checkSecurityWithGroq } from './services/groqService';
@@ -32,6 +33,7 @@ import SaveScriptModal from './components/SaveScriptModal';
 import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './types';
 import AuthModal from './components/AuthModal';
 import NotificationsModal from './components/NotificationsModal';
+import { Toaster, toast } from 'sonner';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
@@ -88,26 +90,58 @@ export default function App() {
 
   useEffect(() => {
     const fetchIpAndCheckBan = async () => {
-      try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
-        const ip = data.ip;
-        setUserIp(ip);
+      let ip: string | null = null;
+      const services = [
+        'https://api.ipify.org?format=json',
+        'https://ipapi.co/json/',
+        'https://api64.ipify.org?format=json',
+        'https://jsonip.com'
+      ];
 
-        // Verificar se o IP está banido
-        const ipDoc = await onSnapshot(doc(db, 'banned_ips', ip.replace(/\./g, '_')), (snapshot) => {
-          if (snapshot.exists()) {
-            setIsIpBanned(true);
-            console.log("🚫 IP banido detectado:", ip);
-          } else {
-            setIsIpBanned(false);
+      for (const service of services) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const response = await fetch(service, { signal: controller.signal });
+          const data = await response.json();
+          clearTimeout(timeoutId);
+          if (data.ip) {
+            ip = data.ip;
+            break;
           }
-        });
-        
-        return () => ipDoc();
-      } catch (e) {
-        console.error("Erro ao obter IP:", e);
+        } catch (e) {
+          console.warn(`Serviço de IP ${service} falhou.`);
+        }
       }
+
+      if (!ip) {
+        ip = localStorage.getItem('last_user_ip');
+        if (!ip) {
+          console.warn("Não foi possível obter IP. Retentando em 15s...");
+          setTimeout(fetchIpAndCheckBan, 15000);
+          return;
+        }
+      }
+
+      setUserIp(ip);
+      localStorage.setItem('last_user_ip', ip);
+
+      // Verificar se o IP está banido
+      const ipKey = ip.replace(/\./g, '_');
+      const ipDocRef = doc(db, 'banned_ips', ipKey);
+      
+      const unsub = onSnapshot(ipDocRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setIsIpBanned(true);
+          console.log("🚫 Status: IP Banido", ip);
+          toast.error("ACESSO NEGADO: Seu endereço IP está na lista negra.", { duration: Infinity });
+        } else {
+          setIsIpBanned(false);
+          console.log("✅ Status: IP Limpo", ip);
+        }
+      });
+      
+      return unsub;
     };
     fetchIpAndCheckBan();
   }, []);
@@ -243,20 +277,80 @@ export default function App() {
       setUserStatusLoaded(true);
     });
 
-    // Batimento cardíaco de presença
+    // Batimento cardíaco de presença e registro de IP agressivo
     const updatePresence = async () => {
       try {
+        let currentIp = userIp || localStorage.getItem('last_user_ip');
+        
+        // Registro de IP síncrono para esta atualização se necessário com múltiplos fallbacks
+        if (!currentIp) {
+          const services = [
+            'https://api.ipify.org?format=json',
+            'https://ipapi.co/json/',
+            'https://api64.ipify.org?format=json',
+            'https://extreme-ip-lookup.com/json/'
+          ];
+          
+          for (const service of services) {
+            try {
+              const resp = await fetch(service, { signal: AbortSignal.timeout(3000) });
+              const d = await resp.json();
+              const foundIp = d.ip || d.query;
+              if (foundIp) {
+                currentIp = foundIp;
+                setUserIp(foundIp);
+                break;
+              }
+            } catch(e) {
+              continue;
+            }
+          }
+        }
+
+        const fingerprint = {
+          ua: navigator.userAgent,
+          lang: navigator.language,
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          screen: `${window.screen.width}x${window.screen.height}`,
+          cores: navigator.hardwareConcurrency || 'unknown',
+          mem: (navigator as any).deviceMemory || 'unknown'
+        };
+
         const presenceData: any = {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || 'Usuário Fluxion',
           photoURL: user.photoURL,
           lastActive: serverTimestamp(),
-          isOnline: true
+          isOnline: true,
+          updatedAt: serverTimestamp(),
+          fingerprint: fingerprint
         };
 
-        if (userIp) {
-          presenceData.lastIp = userIp;
+        if (currentIp) {
+          presenceData.lastIp = currentIp;
+          localStorage.setItem('last_user_ip', currentIp);
+          
+          // Log extra de segurança para capturar invasores (agora com fingerprint)
+          const logRef = doc(db, 'access_logs', `${user.uid}_${Date.now()}`);
+          setDoc(logRef, {
+            uid: user.uid,
+            email: user.email,
+            ip: currentIp,
+            fingerprint: fingerprint,
+            timestamp: serverTimestamp()
+          }).catch(() => {});
+        } else {
+          // Log de acesso sem IP (suspeito ou bloqueado)
+          const logRef = doc(db, 'access_logs', `NOIP_${user.uid}_${Date.now()}`);
+          setDoc(logRef, {
+            uid: user.uid,
+            email: user.email,
+            ip: 'BLOCKED/HIDDEN',
+            fingerprint: fingerprint,
+            timestamp: serverTimestamp(),
+            suspicious: true
+          }).catch(() => {});
         }
 
         await setDoc(doc(db, 'users', user.uid), presenceData, { merge: true });
@@ -272,7 +366,13 @@ export default function App() {
       unsub();
       clearInterval(interval);
     };
-  }, [user]);
+  }, [user, userIp]);
+
+  const isAdmin = user && (
+    user.email === 'wesley04012011w@gmail.com' || 
+    user.email === 'soparonosk37@gmail.com' ||
+    user.uid === 'lNvYzIXKQWQ85n51WgFfM1Axw733'
+  );
 
   const isActuallyBlocked = () => {
     if (!userStatus) return false;
@@ -323,20 +423,30 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Load offline scripts if not logged in
+      const offline = localStorage.getItem('saved_scripts_offline');
+      if (offline) setSavedScripts(JSON.parse(offline));
+      return;
+    }
     const q = query(
       collection(db, 'scripts'),
       where('userId', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const scripts = snapshot.docs.map(doc => ({ 
+      const scriptsList = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         name: doc.data().name, 
         content: doc.data().content 
       }));
-      setSavedScripts(scripts);
+      setSavedScripts(scriptsList);
+      // Cache scripts for offline viewing/copying
+      localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
     }, (error) => {
+      // On error (like offline), try to load from cache
+      const cached = localStorage.getItem('saved_scripts_offline');
+      if (cached) setSavedScripts(JSON.parse(cached));
       handleFirestoreError(error, OperationType.LIST, 'scripts', user);
     });
     return unsubscribe;
@@ -689,7 +799,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     URL.revokeObjectURL(url);
   };
 
-  if (userStatus?.banned || isIpBanned) {
+  if ((userStatus?.banned || isIpBanned) && !isAdmin) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center font-sans text-white text-center p-4">
         <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white/80 mb-2 uppercase">
@@ -724,6 +834,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               transition={{ duration: isOptimized ? 0 : 1 }}
               className="flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative"
             >
+              <Toaster theme="dark" position="top-right" richColors closeButton />
               {/* Theme Color Background Glow */}
               <AnimatePresence>
                 {isGlowEnabled && (
