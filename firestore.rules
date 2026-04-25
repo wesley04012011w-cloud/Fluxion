@@ -56,7 +56,14 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
              (request.auth.token.email == "wesley04012011w@gmail.com" || 
-              request.auth.token.email == "soparonosk37@gmail.com");
+              request.auth.token.email == "soparonosk37@gmail.com" ||
+              request.auth.uid == "lNvYzIXKQWQ85n51WgFfM1Axw733");
+    }
+
+    function isNotBanned() {
+      return isAuthenticated() && 
+             (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBanned != true);
     }
 
     function isOwner(userId) {
@@ -100,8 +107,15 @@ service cloud.firestore {
              (!('photoURL' in data) || data.photoURL == null || data.photoURL is string) &&
              (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
              (!('isBanned' in data) || data.isBanned is bool) &&
+             (!('lastIp' in data) || data.lastIp == null || data.lastIp is string) &&
              (!('blockedUntil' in data) || data.blockedUntil == null || data.blockedUntil is timestamp) &&
              (!('bannedAt' in data) || data.bannedAt == null || data.bannedAt is timestamp);
+    }
+
+    function isValidBannedIP(data) {
+      return data.keys().hasAll(['ip', 'bannedAt']) &&
+             data.ip is string &&
+             data.bannedAt is timestamp;
     }
 
     function isValidConfig(data) {
@@ -112,37 +126,37 @@ service cloud.firestore {
 
     // Chat Rules
     match /chats/{chatId} {
-      allow read: if isAdmin() || isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isValidChat(request.resource.data);
-      allow update: if isOwner(resource.data.userId) && 
+      allow read: if isAdmin() || (isOwner(resource.data.userId) && isNotBanned());
+      allow create: if isNotBanned() && isValidChat(request.resource.data);
+      allow update: if isNotBanned() && (isAdmin() || (isOwner(resource.data.userId) && 
                       isValidChat(request.resource.data) &&
                       request.resource.data.userId == resource.data.userId &&
-                      request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isOwner(resource.data.userId);
+                      request.resource.data.createdAt == resource.data.createdAt));
+      allow delete: if isAdmin() || isOwner(resource.data.userId);
 
       // Message Rules
       match /messages/{messageId} {
-        allow read: if isAdmin() || isChatOwner(chatId);
-        allow create: if isChatOwner(chatId) && isValidMessage(request.resource.data);
+        allow read: if isAdmin() || (isChatOwner(chatId) && isNotBanned());
+        allow create: if isNotBanned() && (isAdmin() || (isChatOwner(chatId) && isValidMessage(request.resource.data)));
         // Allow updates for streaming content
-        allow update: if isChatOwner(chatId) && 
+        allow update: if isNotBanned() && (isAdmin() || (isChatOwner(chatId) && 
                         isValidMessage(request.resource.data) &&
                         request.resource.data.role == resource.data.role &&
                         request.resource.data.chatId == resource.data.chatId &&
-                        request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isChatOwner(chatId);
+                        request.resource.data.createdAt == resource.data.createdAt));
+        allow delete: if isAdmin() || isChatOwner(chatId);
       }
     }
 
     // Script Rules
     match /scripts/{scriptId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isValidScript(request.resource.data);
-      allow update: if isOwner(resource.data.userId) && 
+      allow read: if isAdmin() || (isOwner(resource.data.userId) && isNotBanned());
+      allow create: if isNotBanned() && isValidScript(request.resource.data);
+      allow update: if isNotBanned() && (isAdmin() || (isOwner(resource.data.userId) && 
                       isValidScript(request.resource.data) &&
                       request.resource.data.userId == resource.data.userId &&
-                      request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isOwner(resource.data.userId);
+                      request.resource.data.createdAt == resource.data.createdAt));
+      allow delete: if isAdmin() || isOwner(resource.data.userId);
     }
 
     // User Rules
@@ -177,6 +191,11 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /banned_ips/{ip} {
+      allow read: if true; // Permitir que qualquer um verifique se o IP está banido
+      allow write: if isAdmin() && isValidBannedIP(request.resource.data);
     }
 
     // Default deny

@@ -28,6 +28,7 @@ import {
   onSnapshot, 
   doc,
   updateDoc,
+  deleteDoc,
   limit,
   Timestamp,
   setDoc,
@@ -48,6 +49,7 @@ export default function AdminPage() {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [bannedIps, setBannedIps] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   
@@ -124,12 +126,18 @@ export default function AdminPage() {
       }
     );
 
+    // Fetch Banned IPs
+    const bannedIpsUnsubscribe = onSnapshot(collection(db, 'banned_ips'), (snapshot) => {
+      setBannedIps(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       configUnsubscribe();
       usersUnsubscribe();
       alertsUnsubscribe();
       errorsUnsubscribe();
       announcementsUnsubscribe();
+      bannedIpsUnsubscribe();
     };
   }, [isAdmin]);
 
@@ -222,6 +230,39 @@ export default function AdminPage() {
       }, { merge: true });
     } catch (e: any) {
       alert('❌ Erro crítico ao banir: ' + e.code + ' - ' + e.message);
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const banIp = async (ip: string) => {
+    try {
+      if (!ip) return;
+      if (processingAction) return;
+      setProcessingAction('banip_' + ip);
+      const ipKey = ip.replace(/\./g, '_');
+      await setDoc(doc(db, 'banned_ips', ipKey), {
+        ip: ip,
+        bannedAt: Timestamp.now(),
+        bannedBy: user?.uid,
+        reason: 'Violação persistente'
+      });
+      alert(`✅ IP ${ip} banido!`);
+    } catch (e: any) {
+      alert('❌ Erro ao banir IP: ' + e.message);
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const unbanIp = async (ip: string) => {
+    try {
+      if (processingAction) return;
+      setProcessingAction('unbanip_' + ip);
+      const ipKey = ip.replace(/\./g, '_');
+      await deleteDoc(doc(db, 'banned_ips', ipKey));
+    } catch (e: any) {
+      alert('❌ Erro ao desbanir IP: ' + e.message);
     } finally {
       setProcessingAction(null);
     }
@@ -606,6 +647,18 @@ export default function AdminPage() {
                           <p className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">{isOnline ? 'Online AGORA' : 'Offline'}</p>
                           <span className="text-[8px] text-gray-700 font-mono">• {u.email}</span>
                         </div>
+                        {u.lastIp && (
+                          <div className="flex items-center gap-2 mt-1">
+                             <span className="text-[8px] bg-white/5 px-2 py-0.5 rounded text-gray-400 font-mono">IP: {u.lastIp}</span>
+                             <button 
+                               onClick={() => banIp(u.lastIp!)}
+                               disabled={!!processingAction || bannedIps.some(bi => bi.ip === u.lastIp)}
+                               className="text-[8px] font-bold text-red-500/60 hover:text-red-500 uppercase disabled:opacity-30"
+                             >
+                               {bannedIps.some(bi => bi.ip === u.lastIp) ? 'Midi bloqueado' : 'BANIR IP'}
+                             </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -648,6 +701,37 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )})}
+              </div>
+            </section>
+
+            {/* Banned IPs */}
+            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
+              <div className="p-4 border-b border-white/5 bg-white/[0.01]">
+                <div className="flex items-center gap-3">
+                   <Shield className="text-red-500" size={18} />
+                   <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">IPs Banidos</h2>
+                </div>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                {bannedIps.length === 0 ? (
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum IP na lista negra</div>
+                ) : (
+                  bannedIps.map((bip) => (
+                    <div key={bip.id} className="p-3 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-mono text-red-400">{bip.ip}</span>
+                        <span className="text-[8px] text-gray-600 uppercase font-bold">{bip.bannedAt?.toDate().toLocaleString()}</span>
+                      </div>
+                      <button 
+                        onClick={() => unbanIp(bip.ip)}
+                        disabled={!!processingAction}
+                        className="text-[9px] font-black text-green-500 hover:bg-green-500/10 px-2 py-1 rounded border border-green-500/10 uppercase"
+                      >
+                        {processingAction === 'unbanip_' + bip.ip ? '...' : 'REMOVER'}
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </section>
 

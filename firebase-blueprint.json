@@ -94,9 +94,24 @@
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "lastActive": { "type": "string", "format": "date-time" },
-        "isOnline": { "type": "boolean" }
+        "isOnline": { "type": "boolean" },
+        "lastIp": { "type": "string", "description": "The last known IP address of the user." },
+        "isBanned": { "type": "boolean" },
+        "bannedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "lastActive"]
+    },
+    "BannedIP": {
+      "title": "Banned IP Address",
+      "description": "An IP address that is blocked from accessing the app.",
+      "type": "object",
+      "properties": {
+        "ip": { "type": "string" },
+        "reason": { "type": "string" },
+        "bannedAt": { "type": "string", "format": "date-time" },
+        "bannedBy": { "type": "string", "description": "UID of the admin who banned this IP." }
+      },
+      "required": ["ip", "bannedAt"]
     },
     "Config": {
       "title": "App Configuration",
@@ -124,6 +139,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "User profiles and activity."
+    },
+    "/banned_ips/{ip}": {
+      "schema": "BannedIP",
+      "description": "List of banned IP addresses."
     },
     "/config/{configId}": {
       "schema": "Config",

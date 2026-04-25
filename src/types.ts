@@ -29,6 +29,17 @@ export interface AppUser {
   photoURL: string | null;
   lastActive: Timestamp;
   isOnline: boolean;
+  lastIp?: string;
+  isBanned?: boolean;
+  blockedUntil?: Timestamp;
+}
+
+export interface BannedIP {
+  id: string;
+  ip: string;
+  reason?: string;
+  bannedAt: Timestamp;
+  bannedBy: string;
 }
 
 export interface AppConfig {

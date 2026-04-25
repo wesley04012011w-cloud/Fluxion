@@ -44,6 +44,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [userStatusLoaded, setUserStatusLoaded] = useState(false);
+  const [userIp, setUserIp] = useState<string | null>(null);
+  const [isIpBanned, setIsIpBanned] = useState(false);
   const [chats, setChats] = useState<Chat[]>([]);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -83,6 +85,32 @@ export default function App() {
   });
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchIpAndCheckBan = async () => {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        const ip = data.ip;
+        setUserIp(ip);
+
+        // Verificar se o IP está banido
+        const ipDoc = await onSnapshot(doc(db, 'banned_ips', ip.replace(/\./g, '_')), (snapshot) => {
+          if (snapshot.exists()) {
+            setIsIpBanned(true);
+            console.log("🚫 IP banido detectado:", ip);
+          } else {
+            setIsIpBanned(false);
+          }
+        });
+        
+        return () => ipDoc();
+      } catch (e) {
+        console.error("Erro ao obter IP:", e);
+      }
+    };
+    fetchIpAndCheckBan();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('app_optimized', String(isOptimized));
@@ -218,14 +246,20 @@ export default function App() {
     // Batimento cardíaco de presença
     const updatePresence = async () => {
       try {
-        await setDoc(doc(db, 'users', user.uid), {
+        const presenceData: any = {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || 'Usuário Fluxion',
           photoURL: user.photoURL,
           lastActive: serverTimestamp(),
-          isOnline: true // Legado, o admin usará lastActive
-        }, { merge: true });
+          isOnline: true
+        };
+
+        if (userIp) {
+          presenceData.lastIp = userIp;
+        }
+
+        await setDoc(doc(db, 'users', user.uid), presenceData, { merge: true });
       } catch (e) {
         console.error("Presence update failed:", e);
       }
@@ -655,12 +689,15 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     URL.revokeObjectURL(url);
   };
 
-  if (userStatus?.banned) {
+  if (userStatus?.banned || isIpBanned) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center font-sans text-white text-center p-4">
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white/80">
-          Usuário banido por violação das diretrizes
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center font-sans text-white text-center p-4">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white/80 mb-2 uppercase">
+          🚫 Usuário banido por violação das diretrizes
         </h1>
+        <p className="text-sm text-gray-500 max-w-md">
+          Seu acesso a esta plataforma foi permanentemente revogado por violar nossos termos de uso.
+        </p>
       </div>
     );
   }
