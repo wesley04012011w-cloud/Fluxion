@@ -119,8 +119,50 @@
       "type": "object",
       "properties": {
         "geminiApiKeys": { "type": "array", "items": { "type": "string" } },
+        "groqApiKey": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "AccessLog": {
+      "title": "Access Log",
+      "description": "Recording of user access events.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "ip": { "type": "string" },
+        "email": { "type": "string" },
+        "fingerprint": { "type": "object" },
+        "suspicious": { "type": "boolean" }
+      },
+      "required": ["uid", "timestamp"]
+    },
+    "SecurityAlert": {
+      "title": "Security Alert",
+      "description": "Alert triggered by suspicious activity.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "details": { "type": "string" },
+        "userId": { "type": "string" },
+        "ip": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "severity", "createdAt"]
+    },
+    "ErrorLog": {
+      "title": "Error Log",
+      "description": "Recording of application errors.",
+      "type": "object",
+      "properties": {
+        "error": { "type": "string" },
+        "code": { "type": "string" },
+        "location": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["error", "createdAt"]
     }
   },
   "firestore": {
@@ -147,6 +189,22 @@
     "/config/{configId}": {
       "schema": "Config",
       "description": "Global configuration."
+    },
+    "/access_logs/{logId}": {
+      "schema": "AccessLog",
+      "description": "Logs of user access events."
+    },
+    "/security_alerts/{alertId}": {
+      "schema": "SecurityAlert",
+      "description": "Security signals recorded."
+    },
+    "/error_logs/{logId}": {
+      "schema": "ErrorLog",
+      "description": "Application errors recorded."
+    },
+    "/admins/{userId}": {
+      "schema": { "type": "object", "properties": { "email": { "type": "string" } } },
+      "description": "Administrator accounts."
     }
   }
 }

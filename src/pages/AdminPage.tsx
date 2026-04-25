@@ -73,9 +73,12 @@ export default function AdminPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      console.log('🛡️ Admin: Auth State:', u ? { uid: u.uid, email: u.email } : 'Guest');
       if (u && u.email && ADMIN_EMAILS.includes(u.email)) {
+        console.log('🛡️ Admin: User recognized as Admin (FE)');
         setIsAdmin(true);
       } else {
+        console.log('🛡️ Admin: User NOT recognized as Admin (FE)');
         setIsAdmin(false);
         if (!loading) navigate('/');
       }
@@ -94,6 +97,8 @@ export default function AdminPage() {
         setAppConfig(data);
         setGroqKey(data.groqApiKey || '');
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'config/main', user);
     });
 
     // Fetch Users
@@ -101,6 +106,9 @@ export default function AdminPage() {
       query(collection(db, 'users'), orderBy('lastActive', 'desc'), limit(50)),
       (snapshot) => {
         setUsers(snapshot.docs.map(d => ({ ...d.data() } as AppUser)));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'users', user);
       }
     );
 
@@ -112,7 +120,7 @@ export default function AdminPage() {
         setAlerts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SecurityAlert)));
       },
       (error) => {
-        console.error('🛡️ Admin: Alerts snapshot error:', error);
+        handleFirestoreError(error, OperationType.LIST, 'security_alerts', user);
       }
     );
 
@@ -121,6 +129,9 @@ export default function AdminPage() {
       query(collection(db, 'error_logs'), orderBy('createdAt', 'desc'), limit(50)),
       (snapshot) => {
         setErrorLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'error_logs', user);
       }
     );
 
@@ -129,12 +140,17 @@ export default function AdminPage() {
       query(collection(db, 'announcements'), orderBy('createdAt', 'desc')),
       (snapshot) => {
         setAnnouncements(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'announcements', user);
       }
     );
 
     // Fetch Banned IPs
     const bannedIpsUnsubscribe = onSnapshot(collection(db, 'banned_ips'), (snapshot) => {
       setBannedIps(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'banned_ips', user);
     });
 
     // Fetch Access Logs
@@ -142,6 +158,9 @@ export default function AdminPage() {
       query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)),
       (snapshot) => {
         setAccessLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'access_logs', user);
       }
     );
 
@@ -365,6 +384,8 @@ export default function AdminPage() {
       const unsub = onSnapshot(q, (snapshot) => {
         setViewingChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setIsLoadingChat(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, `chats/${chatId}/messages`, user);
       });
       // Not storing unsub for now, simple view
     } catch (e: any) {
@@ -924,20 +945,25 @@ export default function AdminPage() {
                              </div>
                              
                              <div className="flex gap-2 mb-3">
-                                <button
-                                  onClick={() => banUser(u.uid)}
-                                  disabled={processingAction === 'ban_' + u.uid}
-                                  className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 text-[9px] font-black py-2 rounded-lg border border-red-500/20 uppercase transition-all"
-                                >
-                                  {processingAction === 'ban_' + u.uid ? 'BANINDO...' : '🔨 BANIR ESTE USUÁRIO'}
-                                </button>
-                                <button
-                                  onClick={() => banIp(u.lastIp!)}
-                                  disabled={!u.lastIp || bannedIps.some(bi => bi.ip === u.lastIp)}
-                                  className="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-400 text-[9px] font-black py-2 rounded-lg border border-red-900/20 uppercase transition-all disabled:opacity-30"
-                                >
-                                  {bannedIps.some(bi => bi.ip === u.lastIp) ? 'IP JÁ BANIDO' : '🚫 BANIR IP'}
-                                </button>
+                             <button
+                               onClick={() => banUser(u.uid)}
+                               disabled={processingAction === 'ban_' + u.uid}
+                               className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 text-[9px] font-black py-2 rounded-lg border border-red-500/20 uppercase transition-all"
+                             >
+                               {processingAction === 'ban_' + u.uid ? 'BANINDO...' : '🔨 BANIR CONTA'}
+                             </button>
+                             <button
+                               onClick={async () => {
+                                 if (u.lastIp) {
+                                   await banIp(u.lastIp);
+                                 }
+                                 await banUser(u.uid);
+                               }}
+                               disabled={processingAction?.includes(u.uid)}
+                               className="flex-1 bg-red-900/60 hover:bg-red-800 text-white text-[9px] font-black py-2 rounded-lg border border-red-500/50 uppercase transition-all"
+                             >
+                               💀 BANIR COMBO (ID+IP)
+                             </button>
                              </div>
                              
                              {loadingUserChats === u.uid ? (

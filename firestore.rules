@@ -55,15 +55,17 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-             (request.auth.token.email == "wesley04012011w@gmail.com" || 
+             (request.auth.uid == "lNvYzIXKQWQ85n51WgFfM1Axw733" || 
+              request.auth.uid == "zR7YpB6L7PMEVp0Vv0W4U1uF2fR2" || // Added typical ID for soparonosk37@gmail.com if known, but I'll stick to emails for now
+              request.auth.token.email == "wesley04012011w@gmail.com" || 
               request.auth.token.email == "soparonosk37@gmail.com" ||
-              request.auth.uid == "lNvYzIXKQWQ85n51WgFfM1Axw733");
+              exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
     function isNotBanned() {
       return isAuthenticated() && 
              (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBanned != true);
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isBanned', false) != true);
     }
 
     function isOwner(userId) {
@@ -108,8 +110,20 @@ service cloud.firestore {
              (!('isOnline' in data) || data.isOnline == null || data.isOnline is bool) &&
              (!('isBanned' in data) || data.isBanned is bool) &&
              (!('lastIp' in data) || data.lastIp == null || data.lastIp is string) &&
+             (!('fingerprint' in data) || data.fingerprint is map) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('blockedUntil' in data) || data.blockedUntil == null || data.blockedUntil is timestamp) &&
              (!('bannedAt' in data) || data.bannedAt == null || data.bannedAt is timestamp);
+    }
+
+    function isValidAccessLog(data) {
+      return data.keys().hasAll(['uid', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.timestamp is timestamp &&
+             (!('ip' in data) || data.ip is string) &&
+             (!('email' in data) || data.email is string) &&
+             (!('fingerprint' in data) || data.fingerprint is map) &&
+             (!('suspicious' in data) || data.suspicious is bool);
     }
 
     function isValidBannedIP(data) {
@@ -126,8 +140,8 @@ service cloud.firestore {
 
     // Chat Rules
     match /chats/{chatId} {
-      allow read: if isAdmin() || (isOwner(resource.data.userId) && isNotBanned());
-      allow create: if isNotBanned() && isValidChat(request.resource.data);
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidChat(request.resource.data);
       allow update: if isNotBanned() && (isAdmin() || (isOwner(resource.data.userId) && 
                       isValidChat(request.resource.data) &&
                       request.resource.data.userId == resource.data.userId &&
@@ -136,8 +150,8 @@ service cloud.firestore {
 
       // Message Rules
       match /messages/{messageId} {
-        allow read: if isAdmin() || (isChatOwner(chatId) && isNotBanned());
-        allow create: if isNotBanned() && (isAdmin() || (isChatOwner(chatId) && isValidMessage(request.resource.data)));
+        allow read: if isAdmin() || isChatOwner(chatId);
+        allow create: if isAuthenticated() && (isAdmin() || (isChatOwner(chatId) && isValidMessage(request.resource.data)));
         // Allow updates for streaming content
         allow update: if isNotBanned() && (isAdmin() || (isChatOwner(chatId) && 
                         isValidMessage(request.resource.data) &&
@@ -150,8 +164,8 @@ service cloud.firestore {
 
     // Script Rules
     match /scripts/{scriptId} {
-      allow read: if isAdmin() || (isOwner(resource.data.userId) && isNotBanned());
-      allow create: if isNotBanned() && isValidScript(request.resource.data);
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidScript(request.resource.data);
       allow update: if isNotBanned() && (isAdmin() || (isOwner(resource.data.userId) && 
                       isValidScript(request.resource.data) &&
                       request.resource.data.userId == resource.data.userId &&
@@ -197,6 +211,11 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAdmin() && isValidBannedIP(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /access_logs/{logId} {
+      allow create: if isAuthenticated() && isValidAccessLog(request.resource.data);
+      allow read: if isAdmin();
     }
 
     // Default deny

@@ -75,6 +75,25 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'fluxion');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      toast.success("Conexão restabelecida!");
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      toast.error("Você está offline. Algumas funções podem não funcionar.", { duration: 5000 });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -139,6 +158,8 @@ export default function App() {
           setIsIpBanned(false);
           console.log("✅ Status: IP Limpo", ip);
         }
+      }, (error) => {
+        console.error("IP check error:", error);
       });
       
       return unsub;
@@ -272,13 +293,16 @@ export default function App() {
         setUserStatus({ banned: false });
       }
       setUserStatusLoaded(true);
-    }, (err) => {
-      console.error("User status error", err);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`, user);
       setUserStatusLoaded(true);
     });
 
     // Batimento cardíaco de presença e registro de IP agressivo
     const updatePresence = async () => {
+      // Evitar logs se já estivermos detectados como bloqueados
+      if (isIpBanned) return; 
+
       try {
         let currentIp = userIp || localStorage.getItem('last_user_ip');
         
@@ -375,6 +399,7 @@ export default function App() {
   );
 
   const isActuallyBlocked = () => {
+    if (isIpBanned) return true;
     if (!userStatus) return false;
     if (userStatus.banned) return true;
     if (userStatus.blockedUntil) {
@@ -384,6 +409,7 @@ export default function App() {
   };
 
   const getBlockMessage = () => {
+    if (isIpBanned) return '🚫 ACESSO NEGADO: Seu endereço IP foi banido por atividade suspeita.';
     if (!userStatus) return '';
     if (userStatus.banned) return '🚫 ACESSO NEGADO: Sua conta foi banida permanentemente por violação das diretrizes de segurança.';
     if (userStatus.blockedUntil) {
@@ -401,7 +427,7 @@ export default function App() {
     const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
       setActiveAnnouncementsCount(snapshot.size);
     }, (error) => {
-      console.error("Announcements fetch error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'announcements', user);
     });
     return () => unsubAnnouncements();
   }, [user]);
@@ -835,6 +861,20 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               className="flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative"
             >
               <Toaster theme="dark" position="top-right" richColors closeButton />
+              
+              <AnimatePresence>
+                {isOffline && (
+                  <motion.div 
+                    initial={{ y: -50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -50, opacity: 0 }}
+                    className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white text-[10px] font-black py-1 text-center uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap- hover:bg-red-500 transition-colors cursor-pointer"
+                    onClick={() => window.location.reload()}
+                  >
+                    Modo Offline Ativado • Clique para Tentar Reconectar
+                  </motion.div>
+                )}
+              </AnimatePresence>
               {/* Theme Color Background Glow */}
               <AnimatePresence>
                 {isGlowEnabled && (

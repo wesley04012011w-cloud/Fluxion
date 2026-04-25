@@ -11,7 +11,7 @@ import {
   updateProfile,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -26,6 +26,19 @@ const persistencePromise = setPersistence(auth, browserLocalPersistence).catch(e
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
+
+// CRITICAL CONSTRAINT: Test connection to Firestore
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'system', 'connection_test'));
+    console.log("🔥 Firestore Connected Successfully");
+  } catch (error) {
+    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('Could not reach'))) {
+      console.error("⚠️ Firestore Connection Issue: Running in limited/offline mode. Check your network or Firebase configuration.");
+    }
+  }
+}
+testConnection();
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

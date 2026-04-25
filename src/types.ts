@@ -128,6 +128,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  // No emitir error fatal para problemas de conexão temporários
+  if (errInfo.error.includes('Could not reach Cloud Firestore backend')) {
+     return;
+  }
+
   if (operationType !== OperationType.LIST) {
     throw new Error(JSON.stringify(errInfo));
   }
