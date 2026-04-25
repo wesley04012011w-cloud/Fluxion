@@ -6,7 +6,7 @@ import {
   Bell
 } from 'lucide-react';
 import { auth, db, signOut } from './firebase';
-import { onAuthStateChanged, User, getRedirectResult, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 

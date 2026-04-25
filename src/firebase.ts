@@ -9,7 +9,8 @@ import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  signOut as firebaseSignOut
 } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -124,4 +125,4 @@ const handleAuthError = (error: any) => {
   }
 };
 
-export const signOut = () => auth.signOut();
+export const signOut = () => firebaseSignOut(auth);
