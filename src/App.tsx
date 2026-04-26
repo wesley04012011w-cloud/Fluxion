@@ -1142,10 +1142,10 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       {/* GHOST ADMIN BUTTON */}
       <div 
         onClick={handleGhostBypass}
-        className="fixed bottom-0 left-0 w-8 h-8 z-[9999] opacity-[0.05] hover:opacity-10 transition-opacity cursor-pointer flex items-center justify-center pointer-events-auto"
-        title="Admin Portal"
+        className="fixed bottom-4 left-4 w-12 h-12 z-[10000] bg-white/[0.01] hover:bg-white/[0.05] border border-white/[0.02] rounded-full transition-all cursor-pointer flex items-center justify-center pointer-events-auto shadow-2xl"
+        title="Portal Admin Secret"
       >
-        <div className="w-1 h-1 bg-white rounded-full" />
+        <div className="w-1.5 h-1.5 bg-white/20 rounded-full group-hover:bg-white/40" />
       </div>
 
       {/* MODO MANUTENÇÃO OVERLAY */}
