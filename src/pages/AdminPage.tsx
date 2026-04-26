@@ -47,7 +47,9 @@ export default function AdminPage() {
   
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [groqKey, setGroqKey] = useState('');
+  const [deepseekKey, setDeepseekKey] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [isSavingDeepseek, setIsSavingDeepseek] = useState(false);
   
   const [users, setUsers] = useState<AppUser[]>([]);
   const [bannedIps, setBannedIps] = useState<any[]>([]);
@@ -96,6 +98,9 @@ export default function AdminPage() {
         const data = docSnap.data() as AppConfig;
         setAppConfig(data);
         setGroqKey(data.groqApiKey || '');
+        setDeepseekKey(data.deepseekApiKey || '');
+      } else {
+        setAppConfig({ maintenanceMode: false } as AppConfig);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'config/main', user);
@@ -221,6 +226,7 @@ export default function AdminPage() {
       console.log('Document written with ID: ', alertRef.id);
       toast.success('Alerta de teste enviado!');
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.WRITE, 'security_alerts', user);
       console.error('Error adding document: ', e);
       toast.error(`Erro ao enviar log: ${e.message}`);
     }
@@ -240,6 +246,46 @@ export default function AdminPage() {
       toast.error('Erro ao salvar chave.');
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleSaveDeepseekKey = async () => {
+    if (!isAdmin) return;
+    setIsSavingDeepseek(true);
+    try {
+      await setDoc(doc(db, 'config', 'main'), {
+        deepseekApiKey: deepseekKey,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      toast.success('Chave DeepSeek salva com sucesso!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
+      toast.error('Erro ao salvar chave.');
+    } finally {
+      setIsSavingDeepseek(false);
+    }
+  };
+
+  const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+
+  const toggleMaintenanceMode = async () => {
+    if (!isAdmin) return;
+    setIsSavingMaintenance(true);
+    try {
+      const isCurrentlyActive = appConfig?.maintenanceMode === true;
+      const newStatus = !isCurrentlyActive;
+      
+      await setDoc(doc(db, 'config', 'main'), {
+        maintenanceMode: newStatus,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      
+      toast.success(newStatus ? 'MODO MANUTENÇÃO ATIVADO! 🚀' : 'MODO MANUTENÇÃO DESATIVADO! ✅');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
+      toast.error('Erro ao alternar modo manutenção.');
+    } finally {
+      setIsSavingMaintenance(false);
     }
   };
 
@@ -265,6 +311,7 @@ export default function AdminPage() {
       }, { merge: true });
       toast.success("Usuário banido permanentemente.");
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${uid}`, user);
       toast.error('Erro crítico ao banir: ' + e.message);
     } finally {
       setProcessingAction(null);
@@ -285,6 +332,7 @@ export default function AdminPage() {
       });
       toast.success(`IP ${ip} banido com sucesso!`);
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.WRITE, `banned_ips/${ip.replace(/\./g, '_')}`, user);
       toast.error('Erro ao banir IP: ' + e.message);
     } finally {
       setProcessingAction(null);
@@ -299,6 +347,7 @@ export default function AdminPage() {
       await deleteDoc(doc(db, 'banned_ips', ipKey));
       toast.success(`IP ${ip} desbanido.`);
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.DELETE, `banned_ips/${ip.replace(/\./g, '_')}`, user);
       toast.error('Erro ao desbanir IP: ' + e.message);
     } finally {
       setProcessingAction(null);
@@ -315,6 +364,7 @@ export default function AdminPage() {
         blockedUntil: Timestamp.fromDate(until)
       }, { merge: true });
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${uid}`, user);
       alert('❌ Erro crítico ao bloquear: ' + e.code + ' - ' + e.message);
     } finally {
       setProcessingAction(null);
@@ -331,6 +381,7 @@ export default function AdminPage() {
         bannedAt: null
       }, { merge: true });
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${uid}`, user);
       alert('❌ Erro crítico ao liberar: ' + e.code + ' - ' + e.message);
     } finally {
       setProcessingAction(null);
@@ -355,6 +406,7 @@ export default function AdminPage() {
       setShowAnnouncementModal(false);
       alert('✅ Comunicado publicado!');
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.WRITE, 'announcements', user);
       alert('❌ Erro ao publicar: ' + e.message);
     } finally {
       setIsPublishingAnnouncement(false);
@@ -367,6 +419,7 @@ export default function AdminPage() {
         isActive: !currentStatus
       });
     } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `announcements/${id}`, user);
       alert('❌ Erro: ' + e.message);
     }
   };
@@ -621,6 +674,57 @@ export default function AdminPage() {
           {/* Sidebar Area */}
           <div className="space-y-6">
             
+            {/* System Controls */}
+            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
+              <div className="flex items-center gap-3 mb-6">
+                 <div className={cn(
+                   "p-2 rounded-lg ui-border border-white/10",
+                   appConfig?.maintenanceMode ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"
+                 )}>
+                    <AlertTriangle size={18} />
+                 </div>
+                 <h2 className="text-sm font-black uppercase tracking-tight">Controle de Sistema</h2>
+              </div>
+              
+              <div className={cn(
+                "p-4 rounded-xl border mb-6",
+                appConfig?.maintenanceMode 
+                  ? "bg-red-500/5 border-red-500/20 text-red-200" 
+                  : "bg-green-500/5 border-green-500/10 text-green-200"
+              )}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest">
+                    Modo Manutenção
+                  </span>
+                  <span className={cn(
+                    "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase",
+                    appConfig?.maintenanceMode ? "bg-red-500 text-white" : "bg-green-500 text-white"
+                  )}>
+                    {appConfig?.maintenanceMode ? 'ATIVADO' : 'INATIVO'}
+                  </span>
+                </div>
+                <p className="text-[10px] opacity-60 leading-relaxed font-medium">
+                  {appConfig?.maintenanceMode 
+                    ? "O acesso para usuários comuns está BLOQUEADO. Apenas administradores podem ver a interface."
+                    : "O sistema está operando normalmente para todos os usuários."}
+                </p>
+              </div>
+
+              <button 
+                onClick={toggleMaintenanceMode}
+                disabled={isSavingMaintenance}
+                className={cn(
+                  "w-full font-black text-[10px] py-4 rounded-xl transition-all flex items-center justify-center gap-2",
+                  appConfig?.maintenanceMode
+                    ? "bg-green-600 hover:bg-green-500 text-white"
+                    : "bg-red-600 hover:bg-red-500 text-white"
+                )}
+              >
+                {isSavingMaintenance ? <RefreshCw size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                {appConfig?.maintenanceMode ? 'DESATIVAR MANUTENÇÃO' : 'ATIVAR MANUTENÇÃO'}
+              </button>
+            </section>
+
             {/* Banned IPs - MOVED TO TOP OF SIDEBAR */}
             <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
               <div className="p-4 border-b border-white/5 bg-white/[0.01]">
@@ -736,6 +840,36 @@ export default function AdminPage() {
               </div>
             </section>
 
+            {/* DeepSeek Integration */}
+            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
+              <div className="flex items-center gap-3 mb-6">
+                 <div className="p-2 bg-blue-500/10 rounded-lg ui-border border-blue-500/20 text-blue-400">
+                    <KeyIcon size={18} />
+                 </div>
+                 <h2 className="text-sm font-black uppercase tracking-tight">DeepSeek AI Fallback</h2>
+              </div>
+              <p className="text-[10px] text-gray-500 mb-4 leading-relaxed font-medium capitalize">
+                Chave final de contingência. Será usada se todos os modelos Gemini falharem.
+              </p>
+              <div className="space-y-4">
+                <input
+                  type="password"
+                  value={deepseekKey}
+                  onChange={(e) => setDeepseekKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-[11px] focus:outline-none focus:border-blue-500/50 transition-all font-mono"
+                />
+                <button 
+                  onClick={handleSaveDeepseekKey}
+                  disabled={isSavingDeepseek}
+                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black text-[10px] py-3 rounded-xl transition-all flex items-center justify-center gap-2 mt-2"
+                >
+                  {isSavingDeepseek ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                  SALVAR CHAVE DEEPSEEK
+                </button>
+              </div>
+            </section>
+
             {/* Gemini API Keys */}
             <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
                <div className="flex items-center gap-3 mb-6">
@@ -750,7 +884,11 @@ export default function AdminPage() {
                     <button 
                       onClick={async () => {
                         const newAuto = appConfig?.autoApiKeySelection === false;
-                        await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
+                        try {
+                          await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
+                        } catch (e) {
+                          handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
+                        }
                       }}
                       className={cn(
                         "text-[9px] font-black px-3 py-1 rounded-full border transition-all",
@@ -776,7 +914,11 @@ export default function AdminPage() {
                             <button 
                               onClick={async () => {
                                 const keys = appConfig.geminiApiKeys.filter((_, i) => i !== idx);
-                                await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
+                                try {
+                                  await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
+                                } catch (e) {
+                                  handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
+                                }
                               }}
                               className="p-1 hover:bg-red-500/10 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-all"
                             >

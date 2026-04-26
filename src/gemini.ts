@@ -2,7 +2,73 @@ import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-export const geminiModel = "gemini-3.1-pro-preview";
+export const geminiModel = "gemini-3.1-pro";
+
+async function callDeepSeek(apiKey: string, messages: any[], onChunk?: (chunk: string) => void) {
+  try {
+    const formattedMessages = messages.map(m => ({
+      role: m.role === 'model' ? 'assistant' : 'user',
+      content: m.content
+    }));
+
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "deepseek-coder",
+        messages: formattedMessages,
+        stream: !!onChunk
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`DeepSeek Error: ${response.status} - ${errorData.error?.message || 'Unknown'}`);
+    }
+
+    if (onChunk && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine || trimmedLine === 'data: [DONE]') continue;
+          
+          if (trimmedLine.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(trimmedLine.slice(6));
+              const content = data.choices[0].delta?.content || "";
+              if (content) {
+                fullText += content;
+                onChunk(content);
+              }
+            } catch (e) {
+              // skip non-json data
+            }
+          }
+        }
+      }
+      return fullText;
+    } else {
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content;
+    }
+  } catch (err) {
+    console.error("DeepSeek fallback final failure:", err);
+    throw err;
+  }
+}
 
 export const getGeminiResponse = async (
   messages: { role: "user" | "model", content: string, images?: string[] }[], 
@@ -13,6 +79,7 @@ export const getGeminiResponse = async (
   preferredModel?: string
 ) => {
   let availableKeys: string[] = [];
+  let deepseekApiKey: string | null = null;
   let selectedIndex = -1;
   let autoMode = true;
   
@@ -24,6 +91,7 @@ export const getGeminiResponse = async (
       if (configDoc.exists()) {
         const data = configDoc.data();
         availableKeys = data.geminiApiKeys || [];
+        deepseekApiKey = data.deepseekApiKey || null;
         selectedIndex = data.selectedApiKeyIndex ?? -1;
         autoMode = data.autoApiKeySelection !== false; // Default to true
       }
@@ -32,7 +100,7 @@ export const getGeminiResponse = async (
     }
   }
 
-  if (availableKeys.length === 0) {
+  if (availableKeys.length === 0 && !deepseekApiKey) {
     throw new Error("ERRO CRITICAL: Nenhuma API Key sua foi configurada. Vá no Painel Admin e adicione suas chaves.");
   }
 
@@ -58,9 +126,9 @@ export const getGeminiResponse = async (
   let lastError: any = null;
   // Fallback chain: Primary reasoning model, fallback to stable generation model, fallback to fast model
   const defaultModelsList = [
-    "gemini-3.1-pro-preview", // 1. Reasoning but very strict quota
-    "gemini-2.5-pro",         // 2. High rationality, much more stable quota
-    "gemini-3-flash-preview"  // 3. Ultra stable, huge quota, fast fallback
+    "gemini-3.1-pro",
+    "gemini-2.5-pro",
+    "gemini-3.0-flash"
   ];
 
   const modelsToTry = preferredModel && preferredModel !== 'auto' 
@@ -172,6 +240,17 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
       }
     } // End Model Loop
   } // End Key Loop
+
+  // 🔥 Fallback Final: DeepSeek
+  if (deepseekApiKey) {
+    try {
+      console.log("🚀 Todos modelos Gemini falharam. Usando DeepSeek como contingência final...");
+      return await callDeepSeek(deepseekApiKey, messages, onChunk);
+    } catch (dsError: any) {
+      console.error("❌ Falha crítica no DeepSeek:", dsError);
+      throw new Error(`APOCALIPSE AI: Gemini e DeepSeek falharam. Motivo final: ${dsError.message}`);
+    }
+  }
 
   throw lastError || new Error("Falha na API: Todas chaves e todos modelos (Pro/Flash) falharam. As cotas estão totalmente esgotadas.");
 };

@@ -46,8 +46,10 @@ export interface AppConfig {
   id: string;
   geminiApiKeys: string[];
   groqApiKey?: string;
+  deepseekApiKey?: string;
   selectedApiKeyIndex?: number;
   autoApiKeySelection?: boolean;
+  maintenanceMode?: boolean;
   updatedAt: Timestamp;
 }
 
@@ -127,11 +129,31 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  
-  // No emitir error fatal para problemas de conexão temporários
-  if (errInfo.error.includes('Could not reach Cloud Firestore backend')) {
-     return;
+  // No emitir error fatal para problemas de conexão temporários ou quota excedida
+  const errorLower = errInfo.error.toLowerCase();
+  const isQuietError = 
+    errorLower.includes('reach cloud firestore backend') || 
+    errorLower.includes('quota') ||
+    errorLower.includes('exhausted') ||
+    errorLower.includes('limit exceeded') ||
+    errorLower.includes('network') ||
+    errorLower.includes('offline') ||
+    errorLower.includes('connection');
+
+  if (!isQuietError) {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  } else {
+    // Solo loguear una vez o en modo warn para no saturar
+    if (errInfo.error.includes('Quota limit exceeded') || errInfo.error.toLowerCase().includes('quota')) {
+      if (!(window as any)._quotaExceededSent) {
+        (window as any)._quotaExceededSent = true;
+        console.warn('⚠️ FIRESTORE QUOTA EXCEEDED - The app will be restricted until tomorrow.');
+        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+      }
+    } else {
+      console.warn('⚠️ Firestore connection/network issue (quieted):', errInfo.operationType, errInfo.path);
+    }
+    return;
   }
 
   if (operationType !== OperationType.LIST) {

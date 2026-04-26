@@ -1,10 +1,17 @@
 import { db } from '../firebase';
 import { doc, getDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../types';
 
 export async function checkSecurityWithGroq(text: string, assistantResponse: string, userId: string, userEmail: string, flowInfo: { success: boolean; error?: string; isSafetyError?: boolean } = { success: true }, chatId?: string) {
   console.log('🛡️ Starting Groq Audit for:', userEmail);
   try {
-    const configSnap = await getDoc(doc(db, 'config', 'main'));
+    let configSnap;
+    try {
+      configSnap = await getDoc(doc(db, 'config', 'main'));
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.GET, 'config/main');
+      return null;
+    }
     const groqKey = configSnap.data()?.groqApiKey;
 
     if (!groqKey) {
@@ -90,24 +97,28 @@ export async function checkSecurityWithGroq(text: string, assistantResponse: str
       // Sempre logar se houver erro de segurança, se for malicioso ou se for um redirecionamento/aviso
       if (isMalicious || flowInfo.isSafetyError) {
         console.warn('🚩 Security Alert Triggered. Saving to Firestore...');
-        await addDoc(collection(db, 'security_alerts'), {
-          userId,
-          userEmail,
-          chatId: chatId || null,
-          type: audit.category || 'security_audit',
-          content: `PERGUNTA: ${text}\n\nFLUXION: ${assistantResponse}`,
-          analysis: audit.reason || 'Atividade suspensa detectada.',
-          severity: audit.severity || (flowInfo.isSafetyError ? 'high' : 'medium'),
-          createdAt: Timestamp.now(),
-          status: 'pending',
-          flow: {
-            readMessage: true,
-            responseSent: flowInfo.success,
-            blocked: flowInfo.isSafetyError || isMalicious,
-            blockedBy: flowInfo.isSafetyError ? 'Gemini Safety' : (isMalicious ? 'Groq Auditor' : 'None'),
-            error: flowInfo.error || null
-          }
-        });
+        try {
+          await addDoc(collection(db, 'security_alerts'), {
+            userId,
+            userEmail,
+            chatId: chatId || null,
+            type: audit.category || 'security_audit',
+            content: `PERGUNTA: ${text}\n\nFLUXION: ${assistantResponse}`,
+            analysis: audit.reason || 'Atividade suspensa detectada.',
+            severity: audit.severity || (flowInfo.isSafetyError ? 'high' : 'medium'),
+            createdAt: Timestamp.now(),
+            status: 'pending',
+            flow: {
+              readMessage: true,
+              responseSent: flowInfo.success,
+              blocked: flowInfo.isSafetyError || isMalicious,
+              blockedBy: flowInfo.isSafetyError ? 'Gemini Safety' : (isMalicious ? 'Groq Auditor' : 'None'),
+              error: flowInfo.error || null
+            }
+          });
+        } catch (e: any) {
+          handleFirestoreError(e, OperationType.CREATE, 'security_alerts');
+        }
       }
       return audit;
     } catch (parseError) {
@@ -115,13 +126,22 @@ export async function checkSecurityWithGroq(text: string, assistantResponse: str
       return null;
     }
   } catch (error: any) {
-    console.error('Groq Audit failed:', error);
-    await addDoc(collection(db, 'error_logs'), {
-      userId,
-      userEmail,
-      error: `Groq Audit Critical Failure: ${error.message}`,
-      createdAt: Timestamp.now()
-    });
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!errorMsg.toLowerCase().includes('quota') && !errorMsg.includes('Could not reach')) {
+      console.error('Groq Audit failed:', error);
+      try {
+        await addDoc(collection(db, 'error_logs'), {
+          userId,
+          userEmail,
+          error: `Groq Audit Critical Failure: ${error.message}`,
+          createdAt: Timestamp.now()
+        });
+      } catch (e: any) {
+        // Ignorar falha ao logar erro se backend estiver inacessível
+      }
+    } else {
+      handleFirestoreError(error, OperationType.WRITE, 'groq_audit/error');
+    }
     return null;
   }
 }

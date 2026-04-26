@@ -86,7 +86,7 @@ export default function ConfigPage() {
           geminiApiKeys: [],
           groqApiKey: '',
           updatedAt: serverTimestamp()
-        });
+        }).catch(err => handleFirestoreError(err, OperationType.WRITE, 'config/main', auth.currentUser));
       }
       setLoading(false);
     }, (error) => {
@@ -409,10 +409,15 @@ export default function ConfigPage() {
                   <div className="flex justify-between items-center mt-2">
                     <span className="text-[10px] text-gray-500">ID do Chat Afetado: {log.chatId}</span>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         // Deletar o log
                         const docRef = doc(db, 'error_logs', log.id);
-                        import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
+                        const { deleteDoc } = await import('firebase/firestore');
+                        try {
+                          await deleteDoc(docRef);
+                        } catch (err) {
+                          handleFirestoreError(err, OperationType.DELETE, `error_logs/${log.id}`, auth.currentUser);
+                        }
                       }}
                       className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
                     >
@@ -472,9 +477,14 @@ export default function ConfigPage() {
                       Detectado pelo mecanismo de segurança Groq AI.
                     </span>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         const docRef = doc(db, 'security_alerts', modLog.id);
-                        import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(docRef));
+                        const { deleteDoc } = await import('firebase/firestore');
+                        try {
+                          await deleteDoc(docRef);
+                        } catch (err) {
+                          handleFirestoreError(err, OperationType.DELETE, `security_alerts/${modLog.id}`, auth.currentUser);
+                        }
                       }}
                       className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
                     >

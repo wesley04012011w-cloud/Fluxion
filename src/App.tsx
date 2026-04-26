@@ -63,6 +63,12 @@ export default function App() {
     onConfirm: () => {}
   });
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const [suggestion, setSuggestion] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -76,6 +82,20 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const lastMessageTimeRef = useRef<number>(0);
+  const requestCountRef = useRef<number>(0);
+  const windowStartTimeRef = useRef<number>(0);
+  const rateLimitedUntilRef = useRef<number>(0);
+
+  useEffect(() => {
+    const handleQuota = () => {
+      setIsQuotaExceeded(true);
+    };
+    window.addEventListener('firestore-quota-exceeded', handleQuota);
+    return () => window.removeEventListener('firestore-quota-exceeded', handleQuota);
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -93,6 +113,37 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error("Global error caught:", event.error);
+      if (user) {
+        addDoc(collection(db, 'error_logs'), {
+          userId: user.uid,
+          userEmail: user.email,
+          error: `Global Crash: ${event.message}`,
+          stack: event.error?.stack || 'no stack',
+          createdAt: serverTimestamp(),
+          type: 'crash'
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, [user]);
+
+  useEffect(() => {
+    // Monitor Maintenance Mode from System Config
+    const unsub = onSnapshot(doc(db, 'config', 'main'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setMaintenanceMode(data.maintenanceMode || false);
+      }
+    }, (error) => {
+      console.warn("Could not fetch maintenance status (offline/quota):", error);
+    });
+    return () => unsub();
   }, []);
 
   const [saveModal, setSaveModal] = useState<{
@@ -159,7 +210,7 @@ export default function App() {
           console.log("✅ Status: IP Limpo", ip);
         }
       }, (error) => {
-        console.error("IP check error:", error);
+        handleFirestoreError(error, OperationType.GET, `banned_ips/${ipKey}`, user);
       });
       
       return unsub;
@@ -399,6 +450,7 @@ export default function App() {
   );
 
   const isActuallyBlocked = () => {
+    if (isAdmin) return false; // Admins never blocked
     if (isIpBanned) return true;
     if (!userStatus) return false;
     if (userStatus.banned) return true;
@@ -489,7 +541,10 @@ export default function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      setMessages(msgList);
+      // Só atualiza se houver mensagens ou se já tivermos limpado antes
+      if (msgList.length > 0 || currentChatId) {
+        setMessages(msgList);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
     });
@@ -638,11 +693,44 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       return;
     }
 
+    const now = Date.now();
+
+    // 1. Cooldown de 3 segundos
+    if (now - lastMessageTimeRef.current < 3000) {
+      toast.error("calma aí chefe 🧠", { id: 'spam-warning' });
+      return;
+    }
+
+    // 2. Bloqueio de 30 segundos se rate limit atingido
+    if (now < rateLimitedUntilRef.current) {
+      const remaining = Math.ceil((rateLimitedUntilRef.current - now) / 1000);
+      toast.error(`Muitas mensagens! Aguarde mais ${remaining}s 🧠`, { id: 'rate-limit-warning' });
+      return;
+    }
+
+    // 3. Gerenciamento da janela de 1 minuto (5 msgs / min)
+    if (now - windowStartTimeRef.current > 60000) {
+      windowStartTimeRef.current = now;
+      requestCountRef.current = 1;
+    } else {
+      requestCountRef.current += 1;
+      
+      if (requestCountRef.current > 5) {
+        rateLimitedUntilRef.current = now + 30000; // Bloqueio de 30s
+        toast.error("Limite atingido! Bloqueado por 30s 🧠", { duration: 5000 });
+        return;
+      }
+    }
+
+    lastMessageTimeRef.current = now;
+
     if (!text.trim() && (!images || images.length === 0)) return;
 
     let chatId = currentChatId;
-    if (!chatId) {
-      try {
+    
+    try {
+      if (!chatId) {
+        console.log("Creating new chat for user:", user.uid);
         const docRef = await addDoc(collection(db, 'chats'), {
           userId: user.uid,
           title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
@@ -651,13 +739,9 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         });
         chatId = docRef.id;
         setCurrentChatId(chatId);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, 'chats');
-        return;
       }
-    }
 
-    try {
+      console.log("Sending message to chat:", chatId);
       await addDoc(collection(db, `chats/${chatId}/messages`), {
         chatId,
         userId: user.uid,
@@ -666,13 +750,15 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         images: images || [],
         createdAt: serverTimestamp()
       });
-      await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() });
+      
+      await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() })
+        .catch(err => console.warn("Chat update non-critical error:", err));
 
       setIsGenerating(true);
       setStreamingText('');
 
       const allMessages: { role: 'user' | 'model', content: string, images?: string[] }[] = [
-        ...messages.map(m => ({ role: m.role, content: m.content, images: m.images })),
+        ...messagesRef.current.map(m => ({ role: m.role, content: m.content, images: m.images })),
         { role: 'user', content: text, images: images }
       ];
 
@@ -697,28 +783,25 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         role: 'model',
         content: result,
         createdAt: serverTimestamp()
-      });
+      }).catch(err => handleFirestoreError(err, OperationType.WRITE, `chats/${chatId}/messages`, user));
 
-      // 1. Audit conversation with Groq (NORMAL CASE)
-      console.log('🛡️ Triggering security audit for message:', text.slice(0, 50));
-      const auditResult = await checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true }, chatId);
-      
-      // Se o auditor Groq detectar algo pesado que passou pelo Gemini, forçamos um log extra se necessário (embora o groqService já logue)
-      console.log('Audit Normal Result:', auditResult);
+      checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true }, chatId)
+        .catch(err => console.error("Groq Check error:", err));
 
       setIsGenerating(false);
       setStreamingText('');
     } catch (error: any) {
-      console.error('Error in send message:', error);
+      console.error('CRITICAL ERROR in handleSendMessage:', error);
       setIsGenerating(false);
       setStreamingText('');
       
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isSafetyError = errorMessage.toLowerCase().includes('safety') || errorMessage.toLowerCase().includes('finish_reason_safety');
 
-      // LOG IMEDIATO PARA O PAINEL SE FOR BLOQUEIO DE SEGURANÇA
+      toast.error(isSafetyError ? "Conteúdo bloqueado por segurança!" : "Erro ao enviar mensagem.");
+
       if (isSafetyError) {
-        await addDoc(collection(db, 'security_alerts'), {
+        addDoc(collection(db, 'security_alerts'), {
           userId: user.uid,
           userEmail: user.email || 'Anônimo',
           chatId: chatId || null,
@@ -735,19 +818,12 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             blockedBy: 'Gemini Safety Filter',
             error: errorMessage
           }
-        });
+        }).catch(() => {});
       }
 
-      // 2. Audit conversation with Groq (ERROR/SAFETY CASE)
-      checkSecurityWithGroq(text, `[ERRO/BLOQUEIO]: ${errorMessage}`, user.uid, user.email || 'Anônimo', { 
-        success: false, 
-        error: errorMessage, 
-        isSafetyError: isSafetyError 
-      }, chatId).catch(err => console.error("Groq Check error (on fail):", err));
-
-      // Error Reporting System
-      try {
-        await addDoc(collection(db, 'error_logs'), {
+      // Logging do erro de forma não-bloqueante
+      if (chatId) {
+        addDoc(collection(db, 'error_logs'), {
           userId: user.uid,
           userEmail: user.email,
           error: errorMessage,
@@ -756,25 +832,11 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           resolved: false,
           model: selectedModel,
           isSafetyAlert: isSafetyError
-        });
-        
-        let userFeedback = `❌ Ops, ocorreu um erro de conexão ou de API ao gerar a resposta.`;
-        if (isSafetyError) {
-          userFeedback = `🛡️ **ALERTA DE SEGURANÇA**\n\nO Fluxion identificou que sua solicitação viola nossas diretrizes de segurança. Esta interação foi registrada e enviada para revisão dos administradores.`;
-        }
-
-        await addDoc(collection(db, `chats/${chatId}/messages`), {
-          chatId,
-          userId: user.uid,
-          role: 'model',
-          content: `${userFeedback}\n\nRelatório: ${errorMessage.slice(0, 100)}...`,
-          createdAt: serverTimestamp()
-        });
-      } catch(logError) {
-        console.error("Failed to log error to firestore", logError);
+        }).catch(() => {});
       }
     }
-  }, [user, currentChatId, messages, apiKey, chats]);
+
+  }, [user, currentChatId, apiKey, chats, selectedModel]);
 
   const handleSaveScript = async (name: string, content: string) => {
     if (!user) {
@@ -848,6 +910,87 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
   return (
     <MotionConfig reducedMotion={isOptimized ? "always" : "never"}>
+      <Toaster theme="dark" position="top-right" richColors closeButton />
+      
+      {/* MODO MANUTENÇÃO OVERLAY */}
+      <AnimatePresence>
+        {maintenanceMode && !isAdmin && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center p-6 text-center overflow-hidden"
+          >
+            <div 
+              className="absolute inset-0 z-0 opacity-20"
+              style={{
+                background: `radial-gradient(circle at 50% 50%, #3b82f6 0%, transparent 70%)`
+              }}
+            />
+            
+            <div className="relative z-10 space-y-8 max-w-md">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                className="w-24 h-24 mx-auto text-blue-500 opacity-80"
+              >
+                <RefreshCw size={96} strokeWidth={1} />
+              </motion.div>
+              
+              <div className="space-y-4">
+                <h1 className="text-4xl font-black tracking-tighter uppercase text-white">
+                  Em Manutenção
+                </h1>
+                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs leading-relaxed">
+                  Estamos realizando melhorias técnicas para garantir a melhor experiência possível. Voltaremos em instantes!
+                </p>
+              </div>
+
+              <div className="pt-8 border-t border-white/5">
+                <div className="flex items-center justify-center gap-3 text-blue-400">
+                  <Activity size={16} className="animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-tight">Status: Otimizando Infraestrutura</span>
+                </div>
+              </div>
+              
+              <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
+                <p className="text-gray-500 text-[10px] font-mono italic">
+                  Agradecemos a paciência. Siga-nos no Discord para atualizações em tempo real.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Banner de Offline / Quota - Ocultos conforme solicitado para testes */}
+      {false && (
+      <AnimatePresence>
+        {isOffline && (
+          <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-[10000] bg-red-600 text-white text-[10px] font-black py-1 text-center uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap- hover:bg-red-500 transition-colors cursor-pointer"
+            onClick={() => window.location.reload()}
+          >
+            Modo Offline Ativado • Clique para Tentar Reconectar
+          </motion.div>
+        )}
+        {isQuotaExceeded && (
+          <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-[10000] bg-amber-600 text-white text-[10px] font-black py-1 text-center uppercase tracking-[0.2em] shadow-lg flex flex-col items-center justify-center gap-0 pointer-events-auto"
+          >
+            <span>Limite de Tráfego do Banco de Dados Atingido</span>
+            <span className="text-[8px] opacity-80">A cota gratuita do Firebase resetará automaticamente em breve (amanhã).</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      )}
+
       <BrowserRouter>
         <Routes>
           <Route path="/home" element={<ConfigPage />} />
@@ -860,21 +1003,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               transition={{ duration: isOptimized ? 0 : 1 }}
               className="flex h-screen text-white font-sans selection:bg-white/20 overflow-hidden relative"
             >
-              <Toaster theme="dark" position="top-right" richColors closeButton />
-              
-              <AnimatePresence>
-                {isOffline && (
-                  <motion.div 
-                    initial={{ y: -50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: -50, opacity: 0 }}
-                    className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white text-[10px] font-black py-1 text-center uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap- hover:bg-red-500 transition-colors cursor-pointer"
-                    onClick={() => window.location.reload()}
-                  >
-                    Modo Offline Ativado • Clique para Tentar Reconectar
-                  </motion.div>
-                )}
-              </AnimatePresence>
               {/* Theme Color Background Glow */}
               <AnimatePresence>
                 {isGlowEnabled && (

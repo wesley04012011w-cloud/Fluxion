@@ -208,6 +208,7 @@ export default function SettingsPage() {
             });
             alert('✅ Script salvo no nuvem com sucesso!');
           } catch (e: any) {
+             handleFirestoreError(e, OperationType.WRITE, 'scripts', user);
              alert('Erro ao salvar no Firestore: ' + (e.message || e));
           }
         } else {

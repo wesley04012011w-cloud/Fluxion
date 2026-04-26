@@ -33,8 +33,12 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'system', 'connection_test'));
     console.log("🔥 Firestore Connected Successfully");
-  } catch (error) {
-    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('Could not reach'))) {
+  } catch (error: any) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.toLowerCase().includes('quota')) {
+       console.warn('⚠️ FIRESTORE QUOTA EXCEEED - Initial test failed.');
+       window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+    } else if (errorMsg.includes('the client is offline') || errorMsg.includes('Could not reach')) {
       console.error("⚠️ Firestore Connection Issue: Running in limited/offline mode. Check your network or Firebase configuration.");
     }
   }
@@ -115,6 +119,9 @@ const handleAuthError = (error: any) => {
     }
   } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
     alert('E-mail ou senha incorretos.');
+  } else if (error.code?.includes('quota') || error.message?.includes('quota')) {
+    alert('⏳ LIMITE DE ACESSO ATINGIDO: O Firebase atingiu o limite de requisições gratuito. Tente novamente em alguns minutos ou aguarde até amanhã.');
+    window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
   } else if (error.code === 'auth/operation-not-allowed') {
     alert('🚫 ERRO DE CONFIGURAÇÃO:\nO método de login (E-mail ou Google) não está totalmente ativo.\n\nIMPORTANTE:\n1. No Firebase Console, clique no botão azul "SALVAR" no final da página após ativar o provedor.\n2. Verifique se o domínio "' + window.location.hostname + '" está na lista de "Domínios Autorizados" em: Autenticação > Configurações > Domínios.');
   } else if (isIframe && (error.message?.includes('cross-origin') || error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed')) {
