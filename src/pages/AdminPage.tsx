@@ -272,15 +272,9 @@ export default function AdminPage() {
     return localStorage.getItem('admin_maintenance_preview') === 'true';
   });
 
-  // Initialize local preview from cloud status ONLY if not manually set before or to keep in sync
-  useEffect(() => {
-    if (appConfig && localStorage.getItem('admin_maintenance_preview') === null) {
-      setLocalMaintenancePreview(appConfig.maintenanceMode || false);
-    }
-  }, [appConfig?.maintenanceMode]);
-
   const toggleLocalPreview = () => {
     const newState = !localMaintenancePreview;
+    console.log("🛠️ Admin: Toggling local preview to:", newState);
     setLocalMaintenancePreview(newState);
     localStorage.setItem('admin_maintenance_preview', String(newState));
     
@@ -289,7 +283,7 @@ export default function AdminPage() {
       detail: { active: newState } 
     }));
 
-    toast.info(newState ? 'Visualização Local Ativada' : 'Visualização Local Desativada', {
+    toast.info(newState ? 'VISUALIZAÇÃO ATIVA' : 'VISUALIZAÇÃO DESATIVADA', {
       id: 'maintenance-local',
       description: newState ? 'Você verá o aviso de manutenção agora.' : 'O aviso foi oculto para você.'
     });
@@ -299,17 +293,20 @@ export default function AdminPage() {
     if (!isAdmin) return;
     setIsSavingMaintenance(true);
     
+    console.log("🛠️ Admin: Syncing maintenance to cloud:", localMaintenancePreview);
+    
     try {
       await setDoc(doc(db, 'config', 'main'), {
         maintenanceMode: localMaintenancePreview,
         updatedAt: serverTimestamp()
       }, { merge: true });
       
-      toast.success(localMaintenancePreview ? 'SISTEMA BLOQUEADO NO CLOUD! 🛡️' : 'SISTEMA LIBERADO NO CLOUD! 🌐', {
+      toast.success(localMaintenancePreview ? 'CLOUD: BLOQUEADO 🛡️' : 'CLOUD: LIBERADO 🌐', {
         id: 'maintenance-sync',
-        description: localMaintenancePreview ? "Manutenção ativa para todos os usuários." : "Acesso normal restaurado para todos."
+        description: localMaintenancePreview ? "Ativo para todos os usuários comuns." : "Acesso normal restaurado."
       });
     } catch (error) {
+      console.error("🛠️ Admin: Cloud sync failed:", error);
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
     } finally {
       setIsSavingMaintenance(false);
