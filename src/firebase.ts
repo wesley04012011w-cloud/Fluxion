@@ -100,25 +100,6 @@ const handleAuthError = (error: any) => {
     return;
   } else if (error.code === 'auth/popup-blocked') {
     alert('🔒 BLOQUEIO DE POPUP DETECTADO!');
-  } else if (error.code === 'auth/email-already-in-use') {
-    alert('Este e-mail já está sendo usado.');
-  } else if (error.code === 'auth/weak-password') {
-    alert('A senha é muito fraca.');
-  } else if (error.code === 'auth/invalid-credential') {
-    const msg = '🚫 ERRO DE CREDENCIAL:\n\n' +
-      '1. Se for E-mail/Senha: Verifique se você já se CADASTROU primeiro (não adianta tentar entrar sem criar a conta).\n' +
-      '2. Se for Google: O Google pode estar bloqueando o login dentro deste visualizador.\n\n' +
-      'Deseja abrir em uma NOVA ABA para garantir que o login funcione?';
-    
-    if (isIframe) {
-      if (confirm(msg)) {
-        window.open(window.location.href, '_blank');
-      }
-    } else {
-      alert('🚫 Credencial Inválida. Verifique seus dados ou se o provedor está ativo no Firebase.');
-    }
-  } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-    alert('E-mail ou senha incorretos.');
   } else if (error.code?.includes('quota') || error.message?.includes('quota')) {
     alert('⏳ LIMITE DE ACESSO ATINGIDO: O Firebase atingiu o limite de requisições gratuito. Tente novamente em alguns minutos ou aguarde até amanhã.');
     window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
@@ -127,9 +108,8 @@ const handleAuthError = (error: any) => {
   } else if (isIframe && (error.message?.includes('cross-origin') || error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed')) {
     const confirmOpen = confirm('⚠️ RESTRIÇÃO DE SEGURANÇA (IFRAME)\nO navegador impediu o login por estar dentro de um iframe.\n\nDeseja abrir o app em uma nova aba para logar com segurança?');
     if (confirmOpen) window.open(window.location.href, '_blank');
-  } else {
-    alert('Erro na autenticação: ' + error.message + ' (' + error.code + ')');
   }
+  // Other form validation errors (like invalid-credential) are handled directly in the UI components
 };
 
 export const signOut = () => firebaseSignOut(auth);

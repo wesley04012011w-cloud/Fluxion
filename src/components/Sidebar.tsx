@@ -307,6 +307,7 @@ const Sidebar = React.memo(({
           )}
 
           <button
+            id="settings-btn"
             onClick={() => navigate('/config')}
             className="flex items-center gap-2 w-full p-2 rounded-lg ui-bg-muted hover:bg-white/10 ui-text-muted border border-transparent transition-all text-xs font-bold ui-border"
           >

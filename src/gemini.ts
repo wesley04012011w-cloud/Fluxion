@@ -101,7 +101,7 @@ export const getGeminiResponse = async (
   }
 
   if (availableKeys.length === 0 && !deepseekApiKey) {
-    throw new Error("ERRO CRITICAL: Nenhuma API Key sua foi configurada. Vá no Painel Admin e adicione suas chaves.");
+    throw new Error("⚠️ SISTEMA SOBRECARREGADO: A cota da nuvem esgotou. Vá em Configurações (ícone de engrenagem) e insira sua própria API Key do Gemini para continuar usando o app.");
   }
 
   // Determine key order and usage

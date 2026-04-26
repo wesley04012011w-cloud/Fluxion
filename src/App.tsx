@@ -628,13 +628,14 @@ export default function App() {
   };
 
   const createNewChat = async () => {
-    if (!user) {
+    if (!user && !apiKey) {
       setIsAuthModalOpen(true);
       return;
     }
+    const currentUserId = user ? user.uid : 'local_offline_user';
     const newChat: Chat = {
       id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-      userId: user.uid,
+      userId: currentUserId,
       title: 'Novo Script',
       mode: ChatMode.NORMAL,
       createdAt: Timestamp.now(),
@@ -647,15 +648,16 @@ export default function App() {
   };
 
   const createHeavyChat = async () => {
-    if (!user) {
+    if (!user && !apiKey) {
       setIsAuthModalOpen(true);
       return;
     }
+    const currentUserId = user ? user.uid : 'local_offline_user';
 
     const chatId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     const newChat: Chat = {
       id: chatId,
-      userId: user.uid,
+      userId: currentUserId,
       title: 'Modo Pesado',
       mode: ChatMode.HEAVY,
       createdAt: Timestamp.now(),
@@ -668,7 +670,7 @@ export default function App() {
     const aiMsg: Message = {
       id: `m_ai_init_${Date.now()}`,
       chatId: chatId,
-      userId: user.uid,
+      userId: currentUserId,
       role: 'model',
       content: `🚨 **MODO PESADO ATIVADO** 🚨
 
@@ -701,13 +703,14 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
   };
 
   const createConversationChat = async () => {
-    if (!user) {
+    if (!user && !apiKey) {
       setIsAuthModalOpen(true);
       return;
     }
+    const currentUserId = user ? user.uid : 'local_offline_user';
     const newChat: Chat = {
       id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-      userId: user.uid,
+      userId: currentUserId,
       title: 'Resenha (Modo Conversa)',
       mode: ChatMode.CHAT,
       createdAt: Timestamp.now(),
@@ -893,10 +896,11 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
   }, [user, isAdmin]);
 
   const handleSendMessage = useCallback(async (text: string, images?: string[], thinkingLevel?: string, useBlockMode?: boolean) => {
-    if (!user) {
+    if (!user && !apiKey) {
       setIsAuthModalOpen(true);
       return;
     }
+    const currentUserId = user ? user.uid : 'local_offline_user';
 
     if (isActuallyBlocked()) {
       alert(getBlockMessage());
@@ -942,7 +946,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     if (!chatId) {
       const newChat: Chat = {
         id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-        userId: user.uid,
+        userId: currentUserId,
         title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
@@ -958,7 +962,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     const userMsg: Message = {
       id: `m_${Date.now()}`,
       chatId: chatId!,
-      userId: user.uid,
+      userId: currentUserId,
       role: 'user',
       content: text,
       images: images || [],
@@ -996,7 +1000,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       const aiMsg: Message = {
         id: `m_ai_${Date.now()}`,
         chatId: chatId!,
-        userId: user.uid,
+        userId: currentUserId,
         role: 'model',
         content: result,
         createdAt: Timestamp.now()
@@ -1219,8 +1223,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         )}
       </AnimatePresence>
 
-      {/* Banner de Offline / Quota - Ocultos conforme solicitado para testes */}
-      {false && (
       <AnimatePresence>
         {isOffline && (
           <motion.div 
@@ -1238,14 +1240,14 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             initial={{ y: -50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -50, opacity: 0 }}
-            className="fixed top-0 left-0 right-0 z-[10000] bg-amber-600 text-white text-[10px] font-black py-1 text-center uppercase tracking-[0.2em] shadow-lg flex flex-col items-center justify-center gap-0 pointer-events-auto"
+            className="fixed top-0 left-0 right-0 z-[10000] bg-amber-600 text-white text-[10px] font-black py-1.5 px-4 text-center uppercase tracking-[0.1em] shadow-lg flex flex-col items-center justify-center gap-0 pointer-events-auto cursor-pointer"
+            onClick={() => document.getElementById('settings-btn')?.click()}
           >
-            <span>Limite de Tráfego do Banco de Dados Atingido</span>
-            <span className="text-[8px] opacity-80">A cota gratuita do Firebase resetará automaticamente em breve (amanhã).</span>
+            <span className="font-bold">⚠️ Banco de dados em sobrecarga (Cota Excedida)</span>
+            <span className="text-[8px] opacity-90 max-w-sm normal-case tracking-normal">A cota do sistema esgotou. Vá em <b>Configurações</b> (ícone de engrenagem) e insira sua própria API Key do Gemini (gratuita) para usar o app localmente enquanto resolvemos.</span>
           </motion.div>
         )}
       </AnimatePresence>
-      )}
 
       <BrowserRouter>
         <Routes>

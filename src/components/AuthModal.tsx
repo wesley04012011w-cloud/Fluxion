@@ -36,8 +36,20 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setMessage({ type: 'success', text: 'E-mail de recuperação enviado!' });
       }
     } catch (err: any) {
-      // Errors are handled by alerts in firebase.ts, but we keep this block for safety
       console.error("Auth error:", err);
+      let errorText = 'Ocorreu um erro ao processar sua solicitação.';
+      
+      if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
+        errorText = 'Credenciais inválidas. Verifique seu e-mail e senha, ou clique em "Crie sua conta" se for novo.';
+      } else if (err?.code === 'auth/email-already-in-use') {
+        errorText = 'Este e-mail já está em uso.';
+      } else if (err?.code === 'auth/weak-password') {
+        errorText = 'A senha deve ter pelo menos 6 caracteres.';
+      } else if (err?.message) {
+        errorText = err.message;
+      }
+      
+      setMessage({ type: 'error', text: errorText });
     } finally {
       setLoading(false);
     }
@@ -45,10 +57,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   const handleGoogleSignIn = async () => {
     try {
+      setMessage(null);
       await signInWithGoogle();
       onClose();
-    } catch (err) {
-      // Error handled in firebase.ts
+    } catch (err: any) {
+      console.error("Google auth error:", err);
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return; // ignore cancellation
+      }
+      setMessage({ type: 'error', text: err.message || 'Erro ao fazer login com o Google.' });
     }
   };
 
