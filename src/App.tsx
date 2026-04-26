@@ -26,7 +26,6 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
-import { checkSecurityWithGroq } from './services/groqService';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import MessageList from './components/MessageList';
@@ -133,6 +132,8 @@ export default function App() {
     // Se o user já bypassou antes, mantém aberto
     return localStorage.getItem('local_bypass_active') !== 'true';
   });
+  const [showGhostModal, setShowGhostModal] = useState(false);
+  const [ghostEmailInput, setGhostEmailInput] = useState('');
   
   const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
     return localStorage.getItem('admin_maintenance_preview') === 'true';
@@ -141,16 +142,18 @@ export default function App() {
     return localStorage.getItem('admin_bypassed_mode') === 'true' || localStorage.getItem('local_bypass_active') === 'true';
   });
 
-  const handleGhostBypass = () => {
-    const email = prompt("MODO DESENVOLVEDOR: Insira seu e-mail para acesso:");
-    if (email === 'wesley04012011w@gmail.com' || email === 'soparonosk37@gmail.com') {
+  const handleGhostBypassSubmit = () => {
+    if (ghostEmailInput.trim() === 'wesley04012011w@gmail.com' || ghostEmailInput.trim() === 'soparonosk37@gmail.com') {
       setHardcodedMaintenance(false);
       setAdminBypassedMode(true);
       localStorage.setItem('local_bypass_active', 'true');
       localStorage.setItem('admin_bypassed_mode', 'true');
+      setShowGhostModal(false);
+      setGhostEmailInput('');
       toast.success("ACESSO ADMIN LIBERADO");
     } else {
       toast.error("ACESSO NEGADO");
+      setShowGhostModal(false);
     }
   };
   const lastMessageTimeRef = useRef<number>(0);
@@ -187,20 +190,10 @@ export default function App() {
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
       console.error("Global error caught:", event.error);
-      if (user) {
-        addDoc(collection(db, 'error_logs'), {
-          userId: user.uid,
-          userEmail: user.email,
-          error: `Global Crash: ${event.message}`,
-          stack: event.error?.stack || 'no stack',
-          createdAt: serverTimestamp(),
-          type: 'crash'
-        }).catch(() => {});
-      }
     };
     window.addEventListener('error', handleError);
     return () => window.removeEventListener('error', handleError);
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     // Monitor Maintenance Mode from System Config
@@ -1013,9 +1006,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       const finalMsgs = await localChatService.getMessages(chatId!);
       setMessages(finalMsgs);
 
-      checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true }, chatId)
-        .catch(err => console.error("Groq Check error:", err));
-
       setIsGenerating(false);
       setStreamingText('');
     } catch (error: any) {
@@ -1026,42 +1016,24 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isSafetyError = errorMessage.toLowerCase().includes('safety') || errorMessage.toLowerCase().includes('finish_reason_safety');
 
-      toast.error(isSafetyError ? "Conteúdo bloqueado por segurança!" : "Erro ao enviar mensagem.");
-
-      if (isSafetyError) {
-        addDoc(collection(db, 'security_alerts'), {
-          userId: user.uid,
-          userEmail: user.email || 'Anônimo',
-          chatId: chatId! || null,
-          type: 'jailbreak_attempt',
-          content: `MENSAGEM BLOQUEADA PELO GEMINI: ${text}`,
-          analysis: 'O filtro de segurança do Google (Gemini) barrou esta mensagem por conteúdo impróprio ou tentativa de bypass.',
-          severity: 'high',
-          createdAt: Timestamp.now(),
-          status: 'pending',
-          flow: {
-            readMessage: true,
-            responseSent: false,
-            blocked: true,
-            blockedBy: 'Gemini Safety Filter',
-            error: errorMessage
-          }
-        }).catch(() => {});
-      }
-
-      // Logging do erro de forma não-bloqueante
-      if (chatId) {
-        addDoc(collection(db, 'error_logs'), {
-          userId: user.uid,
-          userEmail: user.email,
-          error: errorMessage,
-          chatId: chatId,
-          createdAt: serverTimestamp(),
-          resolved: false,
-          model: selectedModel,
-          isSafetyAlert: isSafetyError
-        }).catch(() => {});
-      }
+      toast.error(
+        <div className="flex flex-col gap-2">
+          <p className="font-black text-[10px] uppercase">
+            {isSafetyError ? "CONTEÚDO BLOQUEADO" : "ERRO AO ENVIAR"}
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[9px] font-bold">Dúvidas? Staff:</span>
+            <a 
+              href="https://discord.gg/YvRBUyhpZ" 
+              target="_blank" 
+              rel="noreferrer"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
+            >
+              Discord
+            </a>
+          </div>
+        </div>
+      );
     }
   }, [user, currentChatId, apiKey, chats, localChats, selectedModel, userIp]);
 
@@ -1141,12 +1113,43 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       
       {/* GHOST ADMIN BUTTON */}
       <div 
-        onClick={handleGhostBypass}
+        onClick={() => setShowGhostModal(true)}
         className="fixed bottom-4 left-4 w-12 h-12 z-[10000] bg-white/[0.01] hover:bg-white/[0.05] border border-white/[0.02] rounded-full transition-all cursor-pointer flex items-center justify-center pointer-events-auto shadow-2xl"
         title="Portal Admin Secret"
       >
         <div className="w-1.5 h-1.5 bg-white/20 rounded-full group-hover:bg-white/40" />
       </div>
+
+      {showGhostModal && (
+        <div className="fixed inset-0 z-[10001] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-white/10 p-6 rounded-2xl w-full max-w-sm space-y-4">
+            <h3 className="font-black text-white text-lg tracking-tight">ACESSO DESENVOLVEDOR</h3>
+            <input 
+              type="email" 
+              placeholder="Digite seu email..."
+              value={ghostEmailInput}
+              onChange={(e) => setGhostEmailInput(e.target.value)}
+              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleGhostBypassSubmit()}
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowGhostModal(false)}
+                className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold transition-all text-xs"
+              >
+                CANCELAR
+              </button>
+              <button 
+                onClick={handleGhostBypassSubmit}
+                className="flex-1 px-4 py-3 bg-white hover:bg-gray-200 text-black rounded-xl font-black transition-all text-xs"
+              >
+                ACESSAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODO MANUTENÇÃO OVERLAY */}
       <AnimatePresence>

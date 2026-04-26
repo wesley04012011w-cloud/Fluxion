@@ -2,23 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { 
   Shield, 
   ChevronLeft,
-  Search,
   RefreshCw,
   User as UserIcon,
   AlertTriangle,
   FileText,
   Activity,
-  Key as KeyIcon,
   Save,
-  CheckCircle,
-  Clock,
-  ExternalLink,
   MessageSquare,
   X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { AppUser, OperationType, handleFirestoreError, cn, SecurityAlert, AppConfig } from '../types';
+import { AppUser, OperationType, handleFirestoreError, cn, AppConfig } from '../types';
 import { Toaster, toast } from 'sonner';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -47,15 +42,12 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [groqKey, setGroqKey] = useState('');
   const [deepseekKey, setDeepseekKey] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [isSavingDeepseek, setIsSavingDeepseek] = useState(false);
   
   const [users, setUsers] = useState<AppUser[]>([]);
   const [bannedIps, setBannedIps] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
-  const [errorLogs, setErrorLogs] = useState<any[]>([]);
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
   
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -98,7 +90,6 @@ export default function AdminPage() {
       if (docSnap.exists()) {
         const data = docSnap.data() as AppConfig;
         setAppConfig(data);
-        setGroqKey(data.groqApiKey || '');
         setDeepseekKey(data.deepseekApiKey || '');
       } else {
         setAppConfig({ maintenanceMode: false } as AppConfig);
@@ -107,7 +98,8 @@ export default function AdminPage() {
       handleFirestoreError(error, OperationType.GET, 'config/main', user);
     });
 
-    // Fetch Users
+    // Fetch Users (REMOVED REALTIME LISTENER)
+    /*
     const usersUnsubscribe = onSnapshot(
       query(collection(db, 'users'), orderBy('lastActive', 'desc'), limit(50)),
       (snapshot) => {
@@ -117,29 +109,7 @@ export default function AdminPage() {
         handleFirestoreError(error, OperationType.LIST, 'users', user);
       }
     );
-
-    // Fetch Security Alerts
-    const alertsUnsubscribe = onSnapshot(
-      query(collection(db, 'security_alerts'), orderBy('createdAt', 'desc'), limit(100)),
-      (snapshot) => {
-        console.log('🛡️ Admin: Received', snapshot.size, 'security alerts');
-        setAlerts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SecurityAlert)));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'security_alerts', user);
-      }
-    );
-
-    // Fetch Error Logs
-    const errorsUnsubscribe = onSnapshot(
-      query(collection(db, 'error_logs'), orderBy('createdAt', 'desc'), limit(50)),
-      (snapshot) => {
-        setErrorLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'error_logs', user);
-      }
-    );
+    */
 
     // Fetch Announcements
     const announcementsUnsubscribe = onSnapshot(
@@ -152,14 +122,17 @@ export default function AdminPage() {
       }
     );
 
-    // Fetch Banned IPs
+    // Fetch Banned IPs (REMOVED REALTIME LISTENER)
+    /*
     const bannedIpsUnsubscribe = onSnapshot(collection(db, 'banned_ips'), (snapshot) => {
       setBannedIps(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'banned_ips', user);
     });
+    */
 
-    // Fetch Access Logs
+    // Fetch Access Logs (REMOVED REALTIME LISTENER)
+    /*
     const accessUnsubscribe = onSnapshot(
       query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)),
       (snapshot) => {
@@ -169,101 +142,76 @@ export default function AdminPage() {
         handleFirestoreError(error, OperationType.LIST, 'access_logs', user);
       }
     );
+    */
 
     return () => {
       configUnsubscribe();
-      usersUnsubscribe();
-      alertsUnsubscribe();
-      errorsUnsubscribe();
       announcementsUnsubscribe();
-      bannedIpsUnsubscribe();
-      accessUnsubscribe();
     };
   }, [isAdmin]);
 
-  const [isTestingGroq, setIsTestingGroq] = useState(false);
-
-  const testGroq = async () => {
-    if (!groqKey) return;
-    setIsTestingGroq(true);
+  const fetchLogsAndIps = async () => {
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [{ role: 'user', content: 'Connection test' }],
-          max_tokens: 5
-        })
-      });
-      if (response.ok) alert('✅ Conexão com Groq OK!');
-      else {
-        const errData = await response.json();
-        alert(`❌ Erro na Groq: ${errData.error?.message || response.statusText}`);
-      }
-    } catch (e: any) {
-      alert(`❌ Falha na conexão: ${e.message}`);
-    } finally {
-      setIsTestingGroq(false);
+      toast.info('Buscando dados. Isso pode custar cota de leituras...', { duration: 2000, id: 'fetch-logs' });
+      const bannedSnap = await getDocs(collection(db, 'banned_ips'));
+      setBannedIps(bannedSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      const accSnap = await getDocs(query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)));
+      setAccessLogs(accSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      
+      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('lastActive', '>=', Timestamp.fromDate(last24h)), orderBy('lastActive', 'desc'), limit(50)));
+      setUsers(usersSnap.docs.map(d => ({ ...d.data() } as AppUser)));
+      
+      toast.success('Logs, IPs e Usuários sincronizados!', { id: 'fetch-logs' });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.LIST, 'logs/ips/users', user);
+      toast.error('Erro ao buscar dados.', { id: 'fetch-logs' });
     }
   };
 
-  const sendManualAudit = async () => {
-    console.log('Sending manual audit...');
+  const [localGeminiKeys, setLocalGeminiKeys] = useState<string[]>(() => {
     try {
-      const alertRef = await addDoc(collection(db, 'security_alerts'), {
-        userId: auth.currentUser?.uid || 'system_fallback',
-        userEmail: auth.currentUser?.email || 'system_fallback',
-        type: 'test',
-        content: 'Teste manual de alerta de segurança (Botão pressionado no Painel)',
-        analysis: 'O administrador executou um teste de trigger de log manual.',
-        severity: 'low',
-        createdAt: Timestamp.now(),
-        status: 'pending'
-      });
-      console.log('Document written with ID: ', alertRef.id);
-      toast.success('Alerta de teste enviado!');
-    } catch (e: any) {
-      handleFirestoreError(e, OperationType.WRITE, 'security_alerts', user);
-      console.error('Error adding document: ', e);
-      toast.error(`Erro ao enviar log: ${e.message}`);
+      const stored = localStorage.getItem('local_gemini_keys');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
     }
+  });
+
+  useEffect(() => {
+    if (appConfig?.geminiApiKeys && localGeminiKeys.length === 0) {
+      setLocalGeminiKeys(appConfig.geminiApiKeys);
+      localStorage.setItem('local_gemini_keys', JSON.stringify(appConfig.geminiApiKeys));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appConfig?.geminiApiKeys]);
+
+  const addLocalKey = (key: string) => {
+    const newKeys = [...localGeminiKeys, key];
+    setLocalGeminiKeys(newKeys);
+    localStorage.setItem('local_gemini_keys', JSON.stringify(newKeys));
+    toast.success('Chave salva no Local Storage', { id: 'local-key' });
   };
 
-  const handleSaveGroqKey = async () => {
-    if (!isAdmin) return;
+  const removeLocalKey = (idx: number) => {
+    const newKeys = localGeminiKeys.filter((_, i) => i !== idx);
+    setLocalGeminiKeys(newKeys);
+    localStorage.setItem('local_gemini_keys', JSON.stringify(newKeys));
+    toast.success('Chave removida do Local Storage', { id: 'local-key' });
+  };
+
+  const uploadKeysToCloud = async () => {
     setIsSavingConfig(true);
+    toast.loading('Enviando chaves para a nuvem...', { id: 'upload-keys' });
     try {
-      await setDoc(doc(db, 'config', 'main'), {
-        groqApiKey: groqKey,
-        updatedAt: Timestamp.now()
-      }, { merge: true });
-      toast.success('Chave Groq salva com sucesso!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
-      toast.error('Erro ao salvar chave.');
+      await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: localGeminiKeys });
+      toast.success('Chaves enviadas e ativas para todos!', { id: 'upload-keys' });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
+      toast.error('Grave: Falha no envio para nuvem', { id: 'upload-keys' });
     } finally {
       setIsSavingConfig(false);
-    }
-  };
-
-  const handleSaveDeepseekKey = async () => {
-    if (!isAdmin) return;
-    setIsSavingDeepseek(true);
-    try {
-      await setDoc(doc(db, 'config', 'main'), {
-        deepseekApiKey: deepseekKey,
-        updatedAt: Timestamp.now()
-      }, { merge: true });
-      toast.success('Chave DeepSeek salva com sucesso!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
-      toast.error('Erro ao salvar chave.');
-    } finally {
-      setIsSavingDeepseek(false);
     }
   };
 
@@ -292,15 +240,15 @@ export default function AdminPage() {
   const syncMaintenanceToCloud = async () => {
     if (!isAdmin) return;
     setIsSavingMaintenance(true);
-    
+
     console.log("🛠️ Admin: Syncing maintenance to cloud:", localMaintenancePreview);
-    
+
     try {
       await setDoc(doc(db, 'config', 'main'), {
         maintenanceMode: localMaintenancePreview,
         updatedAt: serverTimestamp()
       }, { merge: true });
-      
+
       toast.success(localMaintenancePreview ? 'CLOUD: BLOQUEADO 🛡️' : 'CLOUD: LIBERADO 🌐', {
         id: 'maintenance-sync',
         description: localMaintenancePreview ? "Ativo para todos os usuários comuns." : "Acesso normal restaurado."
@@ -310,16 +258,6 @@ export default function AdminPage() {
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
     } finally {
       setIsSavingMaintenance(false);
-    }
-  };
-
-  const resolveAlert = async (alertId: string) => {
-    try {
-      await updateDoc(doc(db, 'security_alerts', alertId), {
-        status: 'reviewed'
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `security_alerts/${alertId}`, user);
     }
   };
 
@@ -565,132 +503,64 @@ export default function AdminPage() {
           {/* Main Content Area */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Security Alerts */}
-            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
-              <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
-                <div className="flex items-center gap-3">
-                   <AlertTriangle className="text-yellow-500" size={20} />
-                   <h2 className="text-sm font-black uppercase tracking-tight">Alertas de Segurança</h2>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-1 bg-yellow-500/10 text-yellow-500 rounded-md border border-yellow-500/20">
-                  {alerts.filter(a => a.status === 'pending').length} PENDENTES
-                </span>
+            {/* Quick Stats */}
+            <section className="grid grid-cols-2 gap-4">
+              <div className="p-4 ui-card border border-white/5 bg-white/[0.02] rounded-xl">
+                 <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest mb-1">Métricas</p>
+                 <h3 className="text-xl font-black">{users.length}</h3>
+                 <p className="text-[8px] text-gray-600 font-bold uppercase">Sessões Ativas</p>
               </div>
-              <div className="divide-y divide-white/5 max-h-[400px] overflow-y-auto custom-scrollbar">
-                {alerts.length === 0 ? (
-                  <div className="p-12 text-center text-gray-600">
-                    <CheckCircle size={32} className="mx-auto mb-3 opacity-20" />
-                    <p className="text-xs font-bold uppercase tracking-widest">Nenhum alerta detectado</p>
-                  </div>
-                ) : (
-                  alerts.map((alert: any) => (
-                    <div key={alert.id} className="p-4 hover:bg-white/[0.02] transition-all group">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "text-[8px] font-black px-1.5 py-0.5 rounded uppercase",
-                            alert.severity === 'high' ? "bg-red-500 text-white" : 
-                            alert.severity === 'medium' ? "bg-orange-500 text-white" : "bg-blue-500 text-white"
-                          )}>
-                             {alert.type || 'ALERTA'}
-                          </span>
-                          <span className="text-xs font-bold text-gray-300">{alert.userEmail}</span>
-                        </div>
-                        <span className="text-[9px] text-gray-600 flex items-center gap-1 font-mono uppercase">
-                          {alert.severity} • {alert.createdAt?.toDate().toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-[11px] text-red-400 font-black uppercase tracking-tight">
-                           IA: {alert.analysis || 'Detectada atividade suspeita'}
-                        </p>
-                        
-                        {/* Flow Status Dashboard */}
-                        {alert.flow && (
-                          <div className="flex flex-wrap gap-2 py-2">
-                            <div className={cn(
-                              "text-[8px] font-bold px-2 py-0.5 rounded-full border",
-                              alert.flow.readMessage ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-red-500/10 text-red-500 border-red-500/20"
-                            )}>
-                              MENSAGEM LIDA: {alert.flow.readMessage ? 'SIM' : 'NÃO'}
-                            </div>
-                            <div className={cn(
-                              "text-[8px] font-bold px-2 py-0.5 rounded-full border",
-                              alert.flow.responseSent ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
-                            )}>
-                              ENVIADO: {alert.flow.responseSent ? 'SIM' : 'FALHOU'}
-                            </div>
-                            <div className={cn(
-                              "text-[8px] font-bold px-2 py-0.5 rounded-full border",
-                              alert.flow.blocked ? "bg-red-500/10 text-red-500 border-red-500/20" : "bg-green-500/10 text-green-500 border-green-500/20"
-                            )}>
-                              BLOQUEADO: {alert.flow.blocked ? `SIM (${alert.flow.blockedBy})` : 'NÃO'}
-                            </div>
-                          </div>
-                        )}
-
-                        <p className="text-[10px] text-gray-500 font-mono leading-relaxed bg-black/40 p-2 rounded-lg border border-white/5 line-clamp-3">
-                          {alert.content}
-                        </p>
-
-                        {alert.flow?.error && (
-                          <p className="text-[9px] text-red-500/70 font-mono bg-red-500/5 p-2 rounded border border-red-500/10 italic">
-                            ERRO TÉCNICO: {alert.flow.error}
-                          </p>
-                        )}
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        {alert.status === 'pending' && (
-                          <button 
-                            onClick={() => resolveAlert(alert.id)}
-                            className="text-[9px] font-bold text-green-500 hover:bg-green-500/10 transition-all uppercase tracking-widest border border-green-500/20 px-3 py-1 rounded-md"
-                          >
-                            Resolver
-                          </button>
-                        )}
-                        {alert.chatId ? (
-                          <button 
-                            onClick={() => openChatView(alert.chatId)}
-                            className="text-[9px] font-bold text-blue-500 hover:bg-blue-500/10 transition-all uppercase tracking-widest border border-blue-500/20 px-3 py-1 rounded-md"
-                          >
-                            Ver Chat
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => openRecentChatView(alert.userId)}
-                            className="text-[9px] font-bold text-blue-400 hover:bg-blue-400/10 transition-all uppercase tracking-widest border border-blue-400/20 px-3 py-1 rounded-md opacity-80"
-                          >
-                            Ver Último Chat
-                          </button>
-                        )}
-                        <span className="text-[8px] text-gray-600 font-mono italic">ID: {alert.userId.slice(0, 8)}...</span>
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="p-4 ui-card border border-white/5 bg-white/[0.02] rounded-xl">
+                 <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest mb-1">Status</p>
+                 <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full" />
+                    <h3 className="text-xs font-black">FIREBASE</h3>
+                 </div>
+                 <p className="text-[8px] text-gray-600 font-bold uppercase tracking-tighter">Latência Estável</p>
               </div>
             </section>
 
-            {/* Error Logs */}
-            <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
-              <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
+            {/* Comunicados */}
+            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                   <Activity className="text-red-400" size={20} />
-                   <h2 className="text-sm font-black uppercase tracking-tight">Logs de Erros de API</h2>
+                   <div className="p-2 bg-purple-500/10 rounded-lg ui-border border-purple-500/20 text-purple-400">
+                      <FileText size={18} />
+                   </div>
+                   <h2 className="text-sm font-black uppercase tracking-tight">Comunicados</h2>
                 </div>
+                <button 
+                  onClick={() => setShowAnnouncementModal(true)}
+                  className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all border border-purple-500/20"
+                >
+                  NOVO
+                </button>
               </div>
-              <div className="divide-y divide-white/5 max-h-[300px] overflow-y-auto custom-scrollbar">
-                {errorLogs.map((log) => (
-                  <div key={log.id} className="p-4 hover:bg-white/[0.02] transition-all">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-bold text-red-400/80 uppercase">{log.userEmail || 'Anônimo'}</span>
-                      <span className="text-[9px] text-gray-600">
-                        {log.createdAt?.toDate().toLocaleTimeString()}
-                      </span>
+              
+              <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {announcements.length === 0 ? (
+                  <p className="text-[10px] text-gray-500 italic">Nenhum comunicado.</p>
+                ) : (
+                  announcements.map((ann) => (
+                    <div key={ann.id} className="bg-black/40 border border-white/5 p-3 rounded-xl">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-xs font-bold text-white truncate pr-2">{ann.title}</h3>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleAnnouncementStatus(ann.id, ann.isActive)}
+                            className={cn(
+                              "text-[8px] font-black px-2 py-0.5 rounded uppercase",
+                              ann.isActive ? "bg-green-500/20 text-green-500" : "bg-gray-500/20 text-gray-500"
+                            )}
+                          >
+                            {ann.isActive ? 'ATIVO' : 'INATIVO'}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 line-clamp-2">{ann.content}</p>
                     </div>
-                    <p className="text-[10px] text-gray-500 truncate font-mono">{log.error}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </section>
           </div>
@@ -781,15 +651,21 @@ export default function AdminPage() {
 
             {/* Banned IPs - MOVED TO TOP OF SIDEBAR */}
             <section className="ui-card border border-white/5 bg-white/[0.02] overflow-hidden rounded-2xl">
-              <div className="p-4 border-b border-white/5 bg-white/[0.01]">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
                 <div className="flex items-center gap-3">
                    <Shield className="text-red-500" size={18} />
                    <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">IPs Banidos (Lista Negra)</h2>
                 </div>
+                <button 
+                  onClick={fetchLogsAndIps}
+                  className="bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 font-black text-[9px] px-3 py-1.5 rounded-lg transition-all"
+                >
+                  PUXAR DADOS / IDS
+                </button>
               </div>
               <div className="max-h-[200px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
                 {bannedIps.length === 0 ? (
-                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum IP na lista negra</div>
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Clique em "PUXAR DADOS" para visualizar IPs</div>
                 ) : (
                   bannedIps.map((bip) => (
                     <div key={bip.id} className="p-3 flex items-center justify-between">
@@ -820,7 +696,7 @@ export default function AdminPage() {
               </div>
               <div className="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
                 {accessLogs.length === 0 ? (
-                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Nenhum log detectado</div>
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">Clique em "PUXAR DADOS" para ver os logs</div>
                 ) : (
                   accessLogs.map((log) => (
                     <div key={log.id} className="p-3">
@@ -846,84 +722,6 @@ export default function AdminPage() {
               </div>
             </section>
 
-            {/* Groq Integration */}
-            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                 <div className="p-2 bg-orange-500/10 rounded-lg ui-border border-orange-500/20 text-orange-400">
-                    <KeyIcon size={18} />
-                 </div>
-                 <h2 className="text-sm font-black uppercase tracking-tight">Groq AI Security</h2>
-              </div>
-              <p className="text-[10px] text-gray-500 mb-4 leading-relaxed font-medium capitalize">
-                Configure a chave da Groq para ativar a análise de segurança AI em tempo real.
-                {!groqKey && (
-                  <span className="block text-red-500 font-bold mt-1">⚠️ CHAVE NÃO DETECTADA</span>
-                )}
-              </p>
-              <div className="space-y-4">
-                <input
-                  type="password"
-                  value={groqKey}
-                  onChange={(e) => setGroqKey(e.target.value)}
-                  placeholder="gsk_..."
-                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-[11px] focus:outline-none focus:border-orange-500/50 transition-all font-mono"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={testGroq}
-                    disabled={isTestingGroq || !groqKey}
-                    className="bg-white/5 hover:bg-white/10 disabled:opacity-20 text-white font-bold text-[10px] py-3 rounded-xl transition-all border border-white/10"
-                  >
-                    {isTestingGroq ? 'TESTANDO...' : 'TESTAR API'}
-                  </button>
-                  <button 
-                    onClick={sendManualAudit}
-                    className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-bold text-[10px] py-3 rounded-xl transition-all border border-blue-500/20"
-                  >
-                    TESTAR LOGS
-                  </button>
-                </div>
-                <button 
-                  onClick={handleSaveGroqKey}
-                  disabled={isSavingConfig}
-                  className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-[10px] py-3 rounded-xl transition-all flex items-center justify-center gap-2 mt-2"
-                >
-                  {isSavingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                  SALVAR CHAVE GROQ
-                </button>
-              </div>
-            </section>
-
-            {/* DeepSeek Integration */}
-            <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                 <div className="p-2 bg-blue-500/10 rounded-lg ui-border border-blue-500/20 text-blue-400">
-                    <KeyIcon size={18} />
-                 </div>
-                 <h2 className="text-sm font-black uppercase tracking-tight">DeepSeek AI Fallback</h2>
-              </div>
-              <p className="text-[10px] text-gray-500 mb-4 leading-relaxed font-medium capitalize">
-                Chave final de contingência. Será usada se todos os modelos Gemini falharem.
-              </p>
-              <div className="space-y-4">
-                <input
-                  type="password"
-                  value={deepseekKey}
-                  onChange={(e) => setDeepseekKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-[11px] focus:outline-none focus:border-blue-500/50 transition-all font-mono"
-                />
-                <button 
-                  onClick={handleSaveDeepseekKey}
-                  disabled={isSavingDeepseek}
-                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black text-[10px] py-3 rounded-xl transition-all flex items-center justify-center gap-2 mt-2"
-                >
-                  {isSavingDeepseek ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                  SALVAR CHAVE DEEPSEEK
-                </button>
-              </div>
-            </section>
-
             {/* Gemini API Keys */}
             <section className="p-6 ui-card border border-white/5 bg-white/[0.02] rounded-2xl">
                <div className="flex items-center gap-3 mb-6">
@@ -941,7 +739,7 @@ export default function AdminPage() {
                         try {
                           await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
                         } catch (e) {
-                          handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
+                          handleFirestoreError(e, OperationType.UPDATE, 'config,main', user);
                         }
                       }}
                       className={cn(
@@ -956,27 +754,20 @@ export default function AdminPage() {
                  </div>
                  
                  <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar">
-                    {appConfig?.geminiApiKeys?.map((key, idx) => (
+                    {localGeminiKeys.map((key, idx) => (
                       <div key={idx} className="bg-black/30 p-2 rounded-lg border border-white/5 flex items-center justify-between group">
                          <code className="text-[9px] font-mono text-gray-400 truncate max-w-[200px]">
                            {key.slice(0, 10)}...{key.slice(-5)}
                          </code>
                          <div className="flex items-center gap-2">
-                            {appConfig.selectedApiKeyIndex === idx && (
+                            {appConfig?.selectedApiKeyIndex === idx && (
                               <span className="text-[8px] font-black text-green-500 uppercase">ATIVO</span>
                             )}
                             <button 
-                              onClick={async () => {
-                                const keys = appConfig.geminiApiKeys.filter((_, i) => i !== idx);
-                                try {
-                                  await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
-                                } catch (e) {
-                                  handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
-                                }
-                              }}
-                              className="p-1 hover:bg-red-500/10 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-all"
+                              onClick={() => removeLocalKey(idx)}
+                              className="p-1 hover:bg-red-500/10 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-all font-bold text-[9px]"
                             >
-                              EXCLUIR
+                              LOCAL DEL
                             </button>
                          </div>
                       </div>
@@ -987,21 +778,29 @@ export default function AdminPage() {
                     <input 
                        id="newGeminiKey"
                        type="password"
-                       placeholder="Adicionar nova chave Gemini..."
+                       placeholder="Nova chave (Salva apenas local)..."
                        className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono mb-2"
-                       onKeyDown={async (e) => {
+                       onKeyDown={(e) => {
                          if (e.key === 'Enter') {
                            const el = e.currentTarget;
                            const val = el.value.trim();
                            if (!val) return;
-                           const keys = [...(appConfig?.geminiApiKeys || []), val];
-                           await updateDoc(doc(db, 'config', 'main'), { geminiApiKeys: keys });
+                           addLocalKey(val);
                            el.value = '';
-                           toast.success('Chave Gemini adicionada.');
                          }
                        }}
                     />
-                    <p className="text-[8px] text-gray-600 italic">Pressione Enter para salvar nova chave.</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-[8px] text-gray-600 italic">Enter para salvar no navegador.</p>
+                      <button 
+                        onClick={uploadKeysToCloud}
+                        disabled={isSavingConfig}
+                        className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black text-[10px] px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-2"
+                      >
+                        {isSavingConfig ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
+                        UPLOAD CLOUD
+                      </button>
+                    </div>
                  </div>
               </div>
             </section>
@@ -1015,6 +814,11 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                {users.length === 0 && (
+                  <div className="p-6 text-center text-gray-600 text-[10px] uppercase font-bold tracking-widest">
+                    Clique em "PUXAR DADOS" para ver os usuários das últimas 24h
+                  </div>
+                )}
                 {users.map((u) => {
                   const lastActive = u.lastActive?.toDate?.() || new Date(0);
                   const now = new Date();

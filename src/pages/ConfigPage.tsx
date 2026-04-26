@@ -80,11 +80,9 @@ export default function ConfigPage() {
       if (snapshot.exists()) {
         const data = snapshot.data() as AppConfig;
         setConfig({ id: snapshot.id, ...data } as AppConfig);
-        setGroqKey(data.groqApiKey || '');
       } else {
         setDoc(configDoc, {
           geminiApiKeys: [],
-          groqApiKey: '',
           updatedAt: serverTimestamp()
         }).catch(err => handleFirestoreError(err, OperationType.WRITE, 'config/main', auth.currentUser));
       }
@@ -93,29 +91,9 @@ export default function ConfigPage() {
       handleFirestoreError(error, OperationType.GET, 'config/main', auth.currentUser);
     });
 
-    // Listen to error logs
-    const logsQuery = query(collection(db, 'error_logs'), orderBy('createdAt', 'desc'));
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const logsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setErrorLogs(logsList);
-    }, (error) => {
-      console.warn("Could not fetch error logs:", error);
-    });
-
-    // Listen to security alerts
-    const secQuery = query(collection(db, 'security_alerts'), orderBy('createdAt', 'desc'));
-    const unsubscribeSec = onSnapshot(secQuery, (snapshot) => {
-      const secLogsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSecurityAlerts(secLogsList);
-    }, (error) => {
-      console.warn("Could not fetch security alerts:", error);
-    });
-
     return () => {
       unsubscribeUsers();
       unsubscribeConfig();
-      unsubscribeLogs();
-      unsubscribeSec();
     };
   }, [authChecked]);
 
@@ -130,22 +108,6 @@ export default function ConfigPage() {
       setNewKey('');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
-    }
-  };
-
-  const saveGroqKey = async () => {
-    if (!config) return;
-    setIsSavingGroq(true);
-    try {
-      await updateDoc(doc(db, 'config', 'main'), {
-        groqApiKey: groqKey.trim(),
-        updatedAt: serverTimestamp()
-      });
-      alert('✅ Chave Groq salva!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'config/main', auth.currentUser);
-    } finally {
-      setIsSavingGroq(false);
     }
   };
 
@@ -314,243 +276,8 @@ export default function ConfigPage() {
               </div>
             </div>
           </motion.section>
-
-          {/* User Management */}
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg">
-                  <Users size={20} />
-                </div>
-                <h2 className="text-xl font-bold">Usuários Ativos</h2>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                <Activity size={12} className="text-green-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-green-500 uppercase">{users.length} ONLINE</span>
-              </div>
-            </div>
-
-            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-              {users.length === 0 ? (
-                <p className="text-gray-600 text-sm italic py-4">Nenhum usuário ativo no momento.</p>
-              ) : (
-                users.map((user) => (
-                  <div key={user.uid} className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-2xl">
-                    <div className="relative">
-                      <img 
-                        src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || 'User'}&background=random`} 
-                        alt={user.displayName || ''} 
-                        className="w-10 h-10 rounded-full border border-white/10"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold truncate">{user.displayName || 'Usuário Anônimo'}</h3>
-                      <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-600 uppercase">Visto por último</p>
-                      <p className="text-[10px] text-gray-400">
-                        {user.lastActive?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.section>
-        </div>
-
-        {/* Error Logs Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl mt-8"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500/10 rounded-lg">
-                <Trash2 size={20} className="text-red-500" />
-              </div>
-              <h2 className="text-xl font-bold">Relatórios de Erros (Status da API)</h2>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full">
-              <span className="text-[10px] font-bold text-red-500 uppercase">{errorLogs.length} RELATÓRIOS</span>
-            </div>
-          </div>
-
-          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-            {errorLogs.length === 0 ? (
-              <p className="text-gray-600 text-sm italic py-4">Nenhum erro registrado. O sistema está estável 🚀</p>
-            ) : (
-              errorLogs.map((log) => (
-                <div key={log.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-sm font-bold text-red-400">Falha Interna {log.resolved ? '(Resolvido)' : ''}</h3>
-                      <p className="text-[10px] text-gray-400 mt-1">Usuário: {log.userEmail || 'Anônimo'} ({log.userId})</p>
-                    </div>
-                    <p className="text-[10px] text-gray-500 font-mono">
-                      {log.createdAt?.toDate().toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl mt-2 overflow-x-auto">
-                    <code className="text-xs text-red-300 font-mono whitespace-pre-wrap">
-                      {log.error}
-                    </code>
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-500">ID do Chat Afetado: {log.chatId}</span>
-                    <button 
-                      onClick={async () => {
-                        // Deletar o log
-                        const docRef = doc(db, 'error_logs', log.id);
-                        const { deleteDoc } = await import('firebase/firestore');
-                        try {
-                          await deleteDoc(docRef);
-                        } catch (err) {
-                          handleFirestoreError(err, OperationType.DELETE, `error_logs/${log.id}`, auth.currentUser);
-                        }
-                      }}
-                      className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
-                    >
-                      LIMPAR / DELETAR
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </motion.section>
-
-        {/* Moderation Logs Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl mt-8"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500/10 rounded-lg">
-                <AlertTriangle size={20} className="text-red-500" />
-              </div>
-              <h2 className="text-xl font-bold">Alertas de Segurança (Anti-Exploit)</h2>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full">
-              <span className="text-[10px] font-bold text-red-500 uppercase">{securityAlerts.length} ALERTAS</span>
-            </div>
-          </div>
-
-          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-            {securityAlerts.length === 0 ? (
-              <p className="text-gray-600 text-sm italic py-4">Nenhuma atividade suspeita detectada. IA de Segurança ativa ✅</p>
-            ) : (
-              securityAlerts.map((modLog) => (
-                <div key={modLog.id} className="flex flex-col bg-black/40 border border-white/5 p-4 rounded-2xl gap-2 relative transition-all hover:border-red-500/20">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-black uppercase text-red-400">Tentativa de Exploit</h3>
-                        <span className="text-[8px] px-1.5 py-0.5 bg-red-500 text-white rounded font-black">{modLog.severity || 'HIGH'}</span>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-1">Usuário: {modLog.userEmail} ({modLog.userId})</p>
-                    </div>
-                    <p className="text-[10px] text-gray-500 font-mono">
-                      {modLog.createdAt?.toDate().toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-xl mt-2">
-                    <p className="text-xs text-red-300 font-mono whitespace-pre-wrap leading-relaxed">
-                      {modLog.content}
-                    </p>
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-600 italic">
-                      Detectado pelo mecanismo de segurança Groq AI.
-                    </span>
-                    <button 
-                      onClick={async () => {
-                        const docRef = doc(db, 'security_alerts', modLog.id);
-                        const { deleteDoc } = await import('firebase/firestore');
-                        try {
-                          await deleteDoc(docRef);
-                        } catch (err) {
-                          handleFirestoreError(err, OperationType.DELETE, `security_alerts/${modLog.id}`, auth.currentUser);
-                        }
-                      }}
-                      className="text-[10px] font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all"
-                    >
-                      ARQUIVAR ALERTA
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </motion.section>
-
-        {/* API Keys Management */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500/10 rounded-lg">
-                  <Plus size={20} className="text-orange-500" />
-                </div>
-                <h2 className="text-xl font-bold">Groq AI Security Key</h2>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <input 
-                  type="password" 
-                  value={groqKey}
-                  onChange={(e) => setGroqKey(e.target.value)}
-                  placeholder="Seu Groq API Key (gsk_...)"
-                  className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500/30 transition-all font-mono"
-                />
-                <button 
-                  onClick={saveGroqKey}
-                  disabled={isSavingGroq}
-                  className="bg-orange-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-500 transition-all flex items-center gap-2 border-transparent"
-                >
-                  {isSavingGroq ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
-                  SALVAR
-                </button>
-              </div>
-              <p className="text-[9px] text-gray-500 leading-relaxed italic">
-                A Groq é usada para analisar prompts em tempo real e detectar tentativas de exploit antes mesmo de chegarem ao Gemini.
-              </p>
-            </div>
-          </motion.section>
         </div>
       </div>
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-      `}</style>
     </div>
   );
 }
