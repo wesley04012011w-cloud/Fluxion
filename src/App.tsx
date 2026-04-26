@@ -129,8 +129,6 @@ export default function App() {
   
   // MODO MANUTENÇÃO FORÇADO (LOCAL)
   const [hardcodedMaintenance, setHardcodedMaintenance] = useState(false);
-  const [showGhostModal, setShowGhostModal] = useState(false);
-  const [ghostEmailInput, setGhostEmailInput] = useState('');
   
   const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
     return localStorage.getItem('admin_maintenance_preview') === 'true';
@@ -139,20 +137,6 @@ export default function App() {
     return localStorage.getItem('admin_bypassed_mode') === 'true' || localStorage.getItem('local_bypass_active') === 'true';
   });
 
-  const handleGhostBypassSubmit = () => {
-    if (ghostEmailInput.trim() === 'wesley04012011w@gmail.com' || ghostEmailInput.trim() === 'soparonosk37@gmail.com') {
-      setHardcodedMaintenance(false);
-      setAdminBypassedMode(true);
-      localStorage.setItem('local_bypass_active', 'true');
-      localStorage.setItem('admin_bypassed_mode', 'true');
-      setShowGhostModal(false);
-      setGhostEmailInput('');
-      toast.success("ACESSO ADMIN LIBERADO");
-    } else {
-      toast.error("ACESSO NEGADO");
-      setShowGhostModal(false);
-    }
-  };
   const lastMessageTimeRef = useRef<number>(0);
   const requestCountRef = useRef<number>(0);
   const windowStartTimeRef = useRef<number>(0);
@@ -1146,46 +1130,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
   return (
     <MotionConfig reducedMotion={isOptimized ? "always" : "never"}>
       <Toaster theme="dark" position="top-right" richColors closeButton />
-      
-      {/* GHOST ADMIN BUTTON */}
-      <div 
-        onClick={() => setShowGhostModal(true)}
-        className="fixed bottom-4 left-4 w-12 h-12 z-[10000] bg-white/[0.01] hover:bg-white/[0.05] border border-white/[0.02] rounded-full transition-all cursor-pointer flex items-center justify-center pointer-events-auto shadow-2xl"
-        title="Portal Admin Secret"
-      >
-        <div className="w-1.5 h-1.5 bg-white/20 rounded-full group-hover:bg-white/40" />
-      </div>
 
-      {showGhostModal && (
-        <div className="fixed inset-0 z-[10001] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 p-6 rounded-2xl w-full max-w-sm space-y-4">
-            <h3 className="font-black text-white text-lg tracking-tight">ACESSO DESENVOLVEDOR</h3>
-            <input 
-              type="email" 
-              placeholder="Digite seu email..."
-              value={ghostEmailInput}
-              onChange={(e) => setGhostEmailInput(e.target.value)}
-              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleGhostBypassSubmit()}
-            />
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setShowGhostModal(false)}
-                className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold transition-all text-xs"
-              >
-                CANCELAR
-              </button>
-              <button 
-                onClick={handleGhostBypassSubmit}
-                className="flex-1 px-4 py-3 bg-white hover:bg-gray-200 text-black rounded-xl font-black transition-all text-xs"
-              >
-                ACESSAR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODO MANUTENÇÃO OVERLAY */}
       <AnimatePresence>
