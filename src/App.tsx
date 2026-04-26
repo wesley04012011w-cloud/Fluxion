@@ -127,12 +127,32 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  
+  // MODO MANUTENÇÃO FORÇADO (LOCAL)
+  const [hardcodedMaintenance, setHardcodedMaintenance] = useState(() => {
+    // Se o user já bypassou antes, mantém aberto
+    return localStorage.getItem('local_bypass_active') !== 'true';
+  });
+  
   const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
     return localStorage.getItem('admin_maintenance_preview') === 'true';
   });
   const [adminBypassedMode, setAdminBypassedMode] = useState(() => {
-    return localStorage.getItem('admin_bypassed_mode') === 'true';
+    return localStorage.getItem('admin_bypassed_mode') === 'true' || localStorage.getItem('local_bypass_active') === 'true';
   });
+
+  const handleGhostBypass = () => {
+    const email = prompt("MODO DESENVOLVEDOR: Insira seu e-mail para acesso:");
+    if (email === 'wesley04012011w@gmail.com' || email === 'soparonosk37@gmail.com') {
+      setHardcodedMaintenance(false);
+      setAdminBypassedMode(true);
+      localStorage.setItem('local_bypass_active', 'true');
+      localStorage.setItem('admin_bypassed_mode', 'true');
+      toast.success("ACESSO ADMIN LIBERADO");
+    } else {
+      toast.error("ACESSO NEGADO");
+    }
+  };
   const lastMessageTimeRef = useRef<number>(0);
   const requestCountRef = useRef<number>(0);
   const windowStartTimeRef = useRef<number>(0);
@@ -1119,9 +1139,18 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     <MotionConfig reducedMotion={isOptimized ? "always" : "never"}>
       <Toaster theme="dark" position="top-right" richColors closeButton />
       
+      {/* GHOST ADMIN BUTTON */}
+      <div 
+        onClick={handleGhostBypass}
+        className="fixed bottom-0 left-0 w-8 h-8 z-[9999] opacity-[0.05] hover:opacity-10 transition-opacity cursor-pointer flex items-center justify-center pointer-events-auto"
+        title="Admin Portal"
+      >
+        <div className="w-1 h-1 bg-white rounded-full" />
+      </div>
+
       {/* MODO MANUTENÇÃO OVERLAY */}
       <AnimatePresence>
-        {(maintenanceMode || (isAdmin && localMaintenancePreview)) && (!isAdmin || !adminBypassedMode) && (
+        {(hardcodedMaintenance || maintenanceMode || (isAdmin && localMaintenancePreview)) && (!isAdmin || !adminBypassedMode) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1146,7 +1175,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               
               <div className="space-y-4">
                 <h1 className="text-4xl font-black tracking-tighter uppercase text-white">
-                  Em Manutenção
+                  App em Manutenção
                 </h1>
                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs leading-relaxed">
                   Estamos realizando melhorias técnicas para garantir a melhor experiência possível. Voltaremos em instantes!
