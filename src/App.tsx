@@ -3,7 +3,9 @@ import {
   MessageSquare, 
   LogOut, 
   User as UserIcon,
-  Bell
+  Bell,
+  Activity,
+  RefreshCw
 } from 'lucide-react';
 import { auth, db, signOut } from './firebase';
 import { onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
@@ -20,7 +22,8 @@ import {
   updateDoc,
   setDoc,
   Timestamp,
-  limit
+  limit,
+  getDocFromServer
 } from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
 import { checkSecurityWithGroq } from './services/groqService';
@@ -30,7 +33,8 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
 import SaveScriptModal from './components/SaveScriptModal';
-import { Chat, Message, OperationType, handleFirestoreError, ChatMode } from './types';
+import { Chat, Message, OperationType, handleFirestoreError, ChatMode, UserStats } from './types';
+import { localChatService } from './services/localChatService';
 import AuthModal from './components/AuthModal';
 import NotificationsModal from './components/NotificationsModal';
 import { Toaster, toast } from 'sonner';
@@ -49,8 +53,41 @@ export default function App() {
   const [userIp, setUserIp] = useState<string | null>(null);
   const [isIpBanned, setIsIpBanned] = useState(false);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [localChats, setLocalChats] = useState<Chat[]>([]);
+  const [isLoadingLocal, setIsLoadingLocal] = useState(true);
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(() => localStorage.getItem('last_current_chat_id'));
+
+  useEffect(() => {
+    const loadLocal = async () => {
+      const local = await localChatService.getChats();
+      setLocalChats(local);
+      setIsLoadingLocal(false);
+    };
+    loadLocal();
+    
+    const handleStorage = async () => {
+      const local = await localChatService.getChats();
+      setLocalChats(local);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
+    const syncCurrent = async () => {
+      if (currentChatId) {
+        localStorage.setItem('last_current_chat_id', currentChatId);
+        const localMsgs = await localChatService.getMessages(currentChatId);
+        setMessages(localMsgs);
+      } else {
+        localStorage.removeItem('last_current_chat_id');
+        setMessages([]);
+      }
+    };
+    syncCurrent();
+  }, [currentChatId]);
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -531,19 +568,21 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user || !currentChatId) {
-      setMessages([]);
-      return;
-    }
+    if (!currentChatId || !user) return;
+
+    // Se o chat for local (ID começa com local_), não buscamos na nuvem
+    if (currentChatId.startsWith('local_')) return;
+
     const q = query(
       collection(db, `chats/${currentChatId}/messages`),
       orderBy('createdAt', 'asc')
     );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      // Só atualiza se houver mensagens ou se já tivermos limpado antes
-      if (msgList.length > 0 || currentChatId) {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      if (!snapshot.empty) {
+        const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
         setMessages(msgList);
+        // Sincroniza com local para visualização offline
+        await localChatService.saveMessages(currentChatId, msgList);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
@@ -560,17 +599,18 @@ export default function App() {
       setIsAuthModalOpen(true);
       return;
     }
-    try {
-      const docRef = await addDoc(collection(db, 'chats'), {
-        userId: user.uid,
-        title: 'Novo Script',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      setCurrentChatId(docRef.id);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'chats');
-    }
+    const newChat: Chat = {
+      id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      userId: user.uid,
+      title: 'Novo Script',
+      mode: ChatMode.NORMAL,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+    await localChatService.saveChat(newChat);
+    const updated = await localChatService.getChats();
+    setLocalChats(updated);
+    setCurrentChatId(newChat.id);
   };
 
   const createHeavyChat = async () => {
@@ -579,22 +619,25 @@ export default function App() {
       return;
     }
 
-    try {
-      const docRef = await addDoc(collection(db, 'chats'), {
-        userId: user.uid,
-        title: 'Modo Pesado',
-        mode: 'heavy',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      setCurrentChatId(docRef.id);
-      
-      // Inject internal AI warning message
-      await addDoc(collection(db, `chats/${docRef.id}/messages`), {
-        chatId: docRef.id,
-        userId: user.uid,
-        role: 'model',
-        content: `🚨 **MODO PESADO ATIVADO** 🚨
+    const chatId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const newChat: Chat = {
+      id: chatId,
+      userId: user.uid,
+      title: 'Modo Pesado',
+      mode: ChatMode.HEAVY,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+    
+    await localChatService.saveChat(newChat);
+    
+    // Inject internal AI warning message locally
+    const aiMsg: Message = {
+      id: `m_ai_init_${Date.now()}`,
+      chatId: chatId,
+      userId: user.uid,
+      role: 'model',
+      content: `🚨 **MODO PESADO ATIVADO** 🚨
 
 Você está utilizando o sistema avançado de geração do Fluxion.
 
@@ -615,11 +658,13 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 - Execute apenas após ter o script completo
 
 🔥 Isso garante um código limpo, completo e sem erros.`,
-        createdAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'chats');
-    }
+      createdAt: Timestamp.now()
+    };
+    
+    await localChatService.addMessage(chatId, aiMsg);
+    const updated = await localChatService.getChats();
+    setLocalChats(updated);
+    setCurrentChatId(chatId);
   };
 
   const createConversationChat = async () => {
@@ -627,19 +672,18 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       setIsAuthModalOpen(true);
       return;
     }
-
-    try {
-      const docRef = await addDoc(collection(db, 'chats'), {
-        userId: user.uid,
-        title: 'Resenha (Modo Conversa)',
-        mode: 'chat',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      setCurrentChatId(docRef.id);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'chats');
-    }
+    const newChat: Chat = {
+      id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      userId: user.uid,
+      title: 'Resenha (Modo Conversa)',
+      mode: ChatMode.CHAT,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    };
+    await localChatService.saveChat(newChat);
+    const updated = await localChatService.getChats();
+    setLocalChats(updated);
+    setCurrentChatId(newChat.id);
   };
 
   const deleteChat = useCallback(async (id: string, e: React.MouseEvent) => {
@@ -649,15 +693,27 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       title: 'Excluir Chat',
       message: 'Tem certeza que deseja excluir este chat permanentemente?',
       onConfirm: async () => {
+        if (id.startsWith('local_')) {
+          await localChatService.deleteChat(id);
+          const updated = await localChatService.getChats();
+          setLocalChats(updated);
+          if (currentChatId === id) setCurrentChatId(null);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          return;
+        }
+
+        if (!user) return;
         try {
           if (currentChatId === id) setCurrentChatId(null);
           await deleteDoc(doc(db, 'chats', id));
+          // Limpar cache local se existir
+          await localChatService.deleteChat(id);
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `chats/${id}`, user);
         }
       }
     });
-  }, [currentChatId]);
+  }, [user, currentChatId]);
 
   const deleteScript = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -681,6 +737,127 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       }
     });
   }, [user, savedScripts]);
+
+  const handleExportChat = useCallback(async (chatId: string) => {
+    if (!user) return;
+    
+    const now = Timestamp.now();
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+      const statsRef = doc(db, 'user_stats', user.uid);
+      const statsSnap = await getDocFromServer(statsRef).catch(() => null);
+      let stats = statsSnap?.exists() ? statsSnap.data() as UserStats : null;
+
+      // Initialize stats if not exist
+      if (!stats) {
+        stats = {
+          userId: user.uid,
+          dailyExportCount: 0,
+          lastExportDate: today,
+          nextExportAllowedAt: now,
+          lastMessagesCount: 0
+        };
+      }
+
+      // Reset count if new day
+      if (stats.lastExportDate !== today) {
+        stats.dailyExportCount = 0;
+        stats.lastExportDate = today;
+      }
+
+      // Check daily limit
+      if (stats.dailyExportCount >= 5 && !isAdmin) {
+        toast.error("Limite de 5 exportações diárias atingido! Tente novamente amanhã.");
+        return;
+      }
+
+      // Check cooldown (5 min)
+      if (stats.nextExportAllowedAt.toMillis() > Date.now() && !isAdmin) {
+        const remaining = Math.ceil((stats.nextExportAllowedAt.toMillis() - Date.now()) / 60000);
+        toast.error(`Aguarde ${remaining}min para exportar novamente.`);
+        return;
+      }
+
+      const localMsgs = await localChatService.getMessages(chatId);
+      
+      // Check for new messages
+      if (localMsgs.length <= stats.lastMessagesCount && !isAdmin) {
+        toast.info("Nada de novo para exportar neste chat.");
+        return;
+      }
+
+      toast.loading("Sincronizando com a nuvem...", { id: 'export-sync' });
+
+      // Create or update chat in Firebase
+      const allLocal = await localChatService.getChats();
+      const localChat = allLocal.find(c => c.id === chatId);
+      if (!localChat) throw new Error("Chat local não encontrado");
+
+      const firebaseChatId = chatId.startsWith('local_') ? chatId.replace('local_', '') : chatId;
+      
+      const ensureTimestamp = (t: any) => {
+        if (t instanceof Timestamp) return t;
+        if (t && typeof t === 'object' && 'seconds' in t && typeof t.seconds === 'number') {
+          return new Timestamp(t.seconds, t.nanoseconds || 0);
+        }
+        return serverTimestamp();
+      };
+
+      try {
+        await setDoc(doc(db, 'chats', firebaseChatId), {
+          userId: user.uid,
+          title: localChat.title || "Untitled Chat",
+          createdAt: ensureTimestamp(localChat.createdAt),
+          updatedAt: serverTimestamp(),
+          mode: localChat.mode || 'heavy'
+        }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `chats/${firebaseChatId}`, user);
+      }
+
+      // Sync all messages (clean them up first)
+      for (const msg of localMsgs) {
+        const msgId = msg.id.startsWith('m_') ? msg.id : `cloud_${msg.id}`;
+        const cleanMsg: any = {
+          id: msgId,
+          chatId: firebaseChatId,
+          userId: msg.userId,
+          role: msg.role,
+          content: msg.content || "",
+          createdAt: ensureTimestamp(msg.createdAt)
+        };
+        if (msg.images && msg.images.length > 0) {
+          cleanMsg.images = msg.images;
+        }
+
+        try {
+          await setDoc(doc(db, `chats/${firebaseChatId}/messages`, msgId), cleanMsg, { merge: true });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `chats/${firebaseChatId}/messages/${msgId}`, user);
+        }
+      }
+
+      // Update stats
+      try {
+        await setDoc(statsRef, {
+          userId: user.uid,
+          dailyExportCount: stats.dailyExportCount + 1,
+          lastMessagesCount: localMsgs.length,
+          nextExportAllowedAt: Timestamp.fromMillis(Date.now() + 5 * 60000),
+          lastExportDate: today
+        }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `user_stats/${user.uid}`, user);
+      }
+
+      toast.success("Chat exportado com sucesso! 🚀", { id: 'export-sync' });
+      
+    } catch (error) {
+      console.error("Export failure:", error);
+      toast.error("Falha ao exportar chat. Verifique sua conexão.", { id: 'export-sync' });
+    }
+  }, [user, isAdmin]);
 
   const handleSendMessage = useCallback(async (text: string, images?: string[], thinkingLevel?: string, useBlockMode?: boolean) => {
     if (!user) {
@@ -728,32 +905,38 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
     let chatId = currentChatId;
     
-    try {
-      if (!chatId) {
-        console.log("Creating new chat for user:", user.uid);
-        const docRef = await addDoc(collection(db, 'chats'), {
-          userId: user.uid,
-          title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-        chatId = docRef.id;
-        setCurrentChatId(chatId);
-      }
-
-      console.log("Sending message to chat:", chatId);
-      await addDoc(collection(db, `chats/${chatId}/messages`), {
-        chatId,
+    // Garantir que temos um chat local
+    if (!chatId) {
+      const newChat: Chat = {
+        id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
         userId: user.uid,
-        role: 'user',
-        content: text,
-        images: images || [],
-        createdAt: serverTimestamp()
-      });
-      
-      await updateDoc(doc(db, 'chats', chatId), { updatedAt: serverTimestamp() })
-        .catch(err => console.warn("Chat update non-critical error:", err));
+        title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      };
+      await localChatService.saveChat(newChat);
+      chatId = newChat.id;
+      setCurrentChatId(chatId);
+      const updatedLocal = await localChatService.getChats();
+      setLocalChats(updatedLocal);
+    }
 
+    // Adicionar mensagem local
+    const userMsg: Message = {
+      id: `m_${Date.now()}`,
+      chatId: chatId!,
+      userId: user.uid,
+      role: 'user',
+      content: text,
+      images: images || [],
+      createdAt: Timestamp.now()
+    };
+    
+    await localChatService.addMessage(chatId!, userMsg);
+    const updatedMsgs = await localChatService.getMessages(chatId!);
+    setMessages(updatedMsgs);
+
+    try {
       setIsGenerating(true);
       setStreamingText('');
 
@@ -762,7 +945,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         { role: 'user', content: text, images: images }
       ];
 
-      const currentChat = chats.find(c => c.id === chatId);
+      const currentChat = localChats.find(c => c.id === chatId) || chats.find(c => c.id === chatId);
       const isHeavy = currentChat?.mode === ChatMode.HEAVY;
       const isChatMode = currentChat?.mode === ChatMode.CHAT;
 
@@ -777,13 +960,18 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         selectedModel
       );
 
-      await addDoc(collection(db, `chats/${chatId}/messages`), {
-        chatId,
+      const aiMsg: Message = {
+        id: `m_ai_${Date.now()}`,
+        chatId: chatId!,
         userId: user.uid,
         role: 'model',
         content: result,
-        createdAt: serverTimestamp()
-      }).catch(err => handleFirestoreError(err, OperationType.WRITE, `chats/${chatId}/messages`, user));
+        createdAt: Timestamp.now()
+      };
+
+      await localChatService.addMessage(chatId!, aiMsg);
+      const finalMsgs = await localChatService.getMessages(chatId!);
+      setMessages(finalMsgs);
 
       checkSecurityWithGroq(text, result, user.uid, user.email || 'Anônimo', { success: true }, chatId)
         .catch(err => console.error("Groq Check error:", err));
@@ -804,7 +992,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         addDoc(collection(db, 'security_alerts'), {
           userId: user.uid,
           userEmail: user.email || 'Anônimo',
-          chatId: chatId || null,
+          chatId: chatId! || null,
           type: 'jailbreak_attempt',
           content: `MENSAGEM BLOQUEADA PELO GEMINI: ${text}`,
           analysis: 'O filtro de segurança do Google (Gemini) barrou esta mensagem por conteúdo impróprio ou tentativa de bypass.',
@@ -835,8 +1023,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         }).catch(() => {});
       }
     }
-
-  }, [user, currentChatId, apiKey, chats, selectedModel]);
+  }, [user, currentChatId, apiKey, chats, localChats, selectedModel, userIp]);
 
   const handleSaveScript = async (name: string, content: string) => {
     if (!user) {
@@ -1041,7 +1228,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             <Sidebar 
               isSidebarOpen={isSidebarOpen}
               setIsSidebarOpen={setIsSidebarOpen}
-              chats={chats}
+              chats={[...localChats, ...chats.filter(c => !localChats.some(lc => lc.id === c.id || lc.id === `local_${c.id}` || c.id === lc.id.replace('local_', '')))]}
               currentChatId={currentChatId}
               setCurrentChatId={setCurrentChatId}
               createNewChat={createNewChat}
@@ -1061,6 +1248,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               setIsOptimized={setIsOptimized}
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
+              onExportChat={handleExportChat}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 z-10">

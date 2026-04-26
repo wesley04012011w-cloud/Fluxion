@@ -271,19 +271,27 @@ export default function AdminPage() {
   const toggleMaintenanceMode = async () => {
     if (!isAdmin) return;
     setIsSavingMaintenance(true);
+    const isCurrentlyActive = appConfig?.maintenanceMode === true;
+    const newStatus = !isCurrentlyActive;
+    
+    console.log("🛠️ Toggling maintenance from", isCurrentlyActive, "to", newStatus);
+    
     try {
-      const isCurrentlyActive = appConfig?.maintenanceMode === true;
-      const newStatus = !isCurrentlyActive;
-      
       await setDoc(doc(db, 'config', 'main'), {
         maintenanceMode: newStatus,
         updatedAt: Timestamp.now()
       }, { merge: true });
       
-      toast.success(newStatus ? 'MODO MANUTENÇÃO ATIVADO! 🚀' : 'MODO MANUTENÇÃO DESATIVADO! ✅');
+      // Update local state immediately for better UX
+      setAppConfig(prev => prev ? { ...prev, maintenanceMode: newStatus } : { maintenanceMode: newStatus } as any);
+      
+      toast.success(newStatus ? 'SISTEMA EM MANUTENÇÃO! 🛡️' : 'SISTEMA ONLINE! 🌐', {
+        id: 'maintenance-toggle',
+        description: newStatus ? "Usuários bloqueados." : "Acesso liberado."
+      });
     } catch (error) {
+      console.error("Maintenance toggle failed:", error);
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
-      toast.error('Erro ao alternar modo manutenção.');
     } finally {
       setIsSavingMaintenance(false);
     }

@@ -120,6 +120,7 @@
       "properties": {
         "geminiApiKeys": { "type": "array", "items": { "type": "string" } },
         "groqApiKey": { "type": "string" },
+        "maintenanceMode": { "type": "boolean" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
@@ -163,9 +164,26 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["error", "createdAt"]
+    },
+    "UserStats": {
+      "title": "User Stats",
+      "description": "Tracks export limits and cooldowns.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "dailyExportCount": { "type": "integer" },
+        "lastExportDate": { "type": "string" },
+        "nextExportAllowedAt": { "type": "string", "format": "date-time" },
+        "lastMessagesCount": { "type": "integer" }
+      },
+      "required": ["userId"]
     }
   },
   "firestore": {
+    "/user_stats/{userId}": {
+      "schema": "UserStats",
+      "description": "User limits for exports."
+    },
     "/chats/{chatId}": {
       "schema": "Chat",
       "description": "Collection of chat sessions."

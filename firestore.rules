@@ -56,7 +56,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
              (request.auth.uid == "lNvYzIXKQWQ85n51WgFfM1Axw733" || 
-              request.auth.uid == "zR7YpB6L7PMEVp0Vv0W4U1uF2fR2" || // Added typical ID for soparonosk37@gmail.com if known, but I'll stick to emails for now
+              request.auth.uid == "zR7YpB6L7PMEVp0Vv0W4U1uF2fR2" ||
               request.auth.token.email == "wesley04012011w@gmail.com" || 
               request.auth.token.email == "soparonosk37@gmail.com" ||
               exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
@@ -73,7 +73,9 @@ service cloud.firestore {
     }
 
     function isChatOwner(chatId) {
-      return isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.userId;
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/chats/$(chatId)) &&
+             request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.userId;
     }
 
     function isValidChat(data) {
@@ -135,13 +137,23 @@ service cloud.firestore {
     function isValidConfig(data) {
       return (!('geminiApiKeys' in data) || (data.geminiApiKeys is list)) &&
              (!('groqApiKey' in data) || (data.groqApiKey is string)) &&
+             (!('maintenanceMode' in data) || (data.maintenanceMode is bool)) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidUserStats(data) {
+      return data.keys().hasAll(['userId', 'dailyExportCount', 'lastExportDate', 'nextExportAllowedAt', 'lastMessagesCount']) &&
+             data.userId == request.auth.uid &&
+             data.dailyExportCount is int &&
+             data.lastExportDate is string &&
+             data.nextExportAllowedAt is timestamp &&
+             data.lastMessagesCount is int;
     }
 
     // Chat Rules
     match /chats/{chatId} {
       allow read: if isAdmin() || isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isValidChat(request.resource.data);
+      allow create: if isAuthenticated() && (isAdmin() || isValidChat(request.resource.data));
       allow update: if isNotBanned() && (isAdmin() || (isOwner(resource.data.userId) && 
                       isValidChat(request.resource.data) &&
                       request.resource.data.userId == resource.data.userId &&
@@ -179,6 +191,12 @@ service cloud.firestore {
       allow create: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
       allow update: if (isOwner(userId) && isValidUser(request.resource.data) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBanned', 'blockedUntil', 'bannedAt'])) || isAdmin();
       allow delete: if isAdmin();
+    }
+
+    match /user_stats/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserStats(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUserStats(request.resource.data)) || isAdmin();
     }
 
     // Config Rules

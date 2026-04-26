@@ -280,6 +280,8 @@ const MessageList = React.memo(({
         <MessageItem 
           msg={{ 
             id: 'streaming', 
+            chatId: messages[0]?.chatId || 'streaming',
+            userId: messages[0]?.userId || 'assistant',
             role: 'model', 
             content: streamingText, 
             createdAt: Timestamp.now()

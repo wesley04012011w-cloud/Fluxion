@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { toast } from 'sonner';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -53,6 +54,14 @@ export interface AppConfig {
   updatedAt: Timestamp;
 }
 
+export interface UserStats {
+  userId: string;
+  dailyExportCount: number;
+  lastExportDate: string; // YYYY-MM-DD
+  nextExportAllowedAt: Timestamp;
+  lastMessagesCount: number;
+}
+
 export interface SecurityAlert {
   id: string;
   userId: string;
@@ -76,6 +85,8 @@ export interface Announcement {
 
 export interface Message {
   id: string;
+  chatId: string;
+  userId: string;
   role: 'user' | 'model';
   content: string;
   images?: string[];
@@ -111,8 +122,9 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, currentUser?: any) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: currentUser?.uid,
       email: currentUser?.email,
@@ -128,35 +140,39 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
-  }
-  // No emitir error fatal para problemas de conexão temporários ou quota excedida
+  };
+  
   const errorLower = errInfo.error.toLowerCase();
-  const isQuietError = 
-    errorLower.includes('reach cloud firestore backend') || 
-    errorLower.includes('quota') ||
-    errorLower.includes('exhausted') ||
-    errorLower.includes('limit exceeded') ||
-    errorLower.includes('network') ||
-    errorLower.includes('offline') ||
-    errorLower.includes('connection');
+  const isQuotaError = errorLower.includes('quota') || errorLower.includes('exhausted') || errorLower.includes('limit exceeded');
+  const isAuthError = errorLower.includes('permission') || errorLower.includes('insufficient');
+  const isNetworkError = errorLower.includes('offline') || errorLower.includes('network') || errorLower.includes('connection') || errorLower.includes('reach cloud firestore');
 
-  if (!isQuietError) {
-    console.error('Firestore Error: ', JSON.stringify(errInfo));
-  } else {
-    // Solo loguear una vez o en modo warn para no saturar
-    if (errInfo.error.includes('Quota limit exceeded') || errInfo.error.toLowerCase().includes('quota')) {
-      if (!(window as any)._quotaExceededSent) {
-        (window as any)._quotaExceededSent = true;
-        console.warn('⚠️ FIRESTORE QUOTA EXCEEDED - The app will be restricted until tomorrow.');
-        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
-      }
-    } else {
-      console.warn('⚠️ Firestore connection/network issue (quieted):', errInfo.operationType, errInfo.path);
-    }
-    return;
+  // Solo loguear errores reales, no de red o cuota (para no saturar dev console)
+  if (!isQuotaError && !isNetworkError) {
+    console.error('Firestore Error:', JSON.stringify(errInfo));
   }
 
-  if (operationType !== OperationType.LIST) {
+  // Toasts informativos
+  if (isQuotaError) {
+    if (!(window as any)._quotaToastSent) {
+      (window as any)._quotaToastSent = true;
+      toast.error("LIMITE DIÁRIO ALCANÇADO! O sistema atingiu a cota gratuita do Firebase. Tente novamente amanhã ou em instantes.", { duration: 10000 });
+      window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+    }
+    return; // Don't throw for quota
+  }
+
+  if (isAuthError) {
+    toast.error("Sem permissão para esta área. Se você for administrador, verifique seu login.", { duration: 5000 });
+  }
+
+  if (isNetworkError) {
+    console.warn("Firestore connection issue (suppressed):", operationType, path);
+    return; // Don't throw for network
+  }
+
+  // Throw only for critical write errors to trigger catch blocks
+  if (operationType !== OperationType.LIST && operationType !== OperationType.GET) {
     throw new Error(JSON.stringify(errInfo));
   }
 }

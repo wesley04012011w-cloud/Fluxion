@@ -13,7 +13,9 @@ import {
   Zap,
   Github,
   ChevronDown,
-  Lock
+  Lock,
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
 import { Chat, cn } from '../types';
 import { User } from 'firebase/auth';
@@ -42,6 +44,7 @@ interface SidebarProps {
   setIsOptimized?: (optimized: boolean) => void;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
+  onExportChat?: (id: string) => void;
 }
 
 const Sidebar = React.memo(({
@@ -66,7 +69,8 @@ const Sidebar = React.memo(({
   isOptimized,
   setIsOptimized,
   selectedModel,
-  setSelectedModel
+  setSelectedModel,
+  onExportChat
 }: SidebarProps) => {
   const navigate = useNavigate();
   const isAdmin = user?.email === 'wesley04012011w@gmail.com' || user?.email === 'soparonosk37/gmail.com' || user?.email === 'soparonosk37@gmail.com';
@@ -195,31 +199,53 @@ const Sidebar = React.memo(({
             ) : chats.length === 0 ? (
               <div className="px-2 py-3 text-[10px] text-gray-600 italic">Nenhum chat encontrado.</div>
             ) : (
-              chats.map((chat) => (
-                <div
-                  key={chat.id}
-                  onClick={() => {
-                    setCurrentChatId(chat.id);
-                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
-                  }}
-                  className={cn(
-                    "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ui-border !border-transparent",
-                    currentChatId === chat.id ? "bg-white/10 text-white !border-[var(--border-ui)]" : "hover:bg-white/5 text-gray-400"
-                  )}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <MessageSquare size={14} className={currentChatId === chat.id ? "text-white" : ""} />
-                    <span className="truncate text-xs font-medium">{chat.title}</span>
-                  </div>
-                  <button
-                    onClick={(e) => deleteChat(chat.id, e)}
-                    className="p-1 hover:text-red-500 transition-all text-gray-600 hover:bg-white/5 rounded"
-                    title="Excluir Chat"
+              chats.map((chat) => {
+                const isLocal = chat.id.startsWith('local_');
+                return (
+                  <div
+                    key={chat.id}
+                    onClick={() => {
+                      setCurrentChatId(chat.id);
+                      if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                    }}
+                    className={cn(
+                      "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ui-border !border-transparent",
+                      currentChatId === chat.id ? "bg-white/10 text-white !border-[var(--border-ui)]" : "hover:bg-white/5 text-gray-400"
+                    )}
                   >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))
+                    <div className="flex items-center gap-2 truncate flex-1">
+                      {isLocal ? (
+                        <Cloud size={14} className="text-amber-500/70" />
+                      ) : (
+                        <MessageSquare size={14} className={currentChatId === chat.id ? "text-white" : ""} />
+                      )}
+                      <span className="truncate text-xs font-medium">{chat.title}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {user && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onExportChat?.(chat.id);
+                          }}
+                          className="p-1 hover:text-green-500 transition-all text-gray-600 hover:bg-white/5 rounded"
+                          title="Exportar/Sincronizar com Nuvem"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => deleteChat(chat.id, e)}
+                        className="p-1 hover:text-red-500 transition-all text-gray-600 hover:bg-white/5 rounded"
+                        title="Excluir Chat"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 
