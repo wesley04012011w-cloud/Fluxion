@@ -1044,11 +1044,18 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           </div>
         );
       } else {
+        const isInvalidKey = errorMessage.toLowerCase().includes('api key') || errorMessage.includes('400') || errorMessage.includes('key not valid');
+        
         toast.error(
           <div className="flex flex-col gap-2">
             <p className="font-black text-[10px] uppercase">
-              {isSafetyError ? "CONTEÚDO BLOQUEADO" : "ERRO AO ENVIAR"}
+              {isSafetyError ? "CONTEÚDO BLOQUEADO" : (isInvalidKey ? "API KEY INVÁLIDA" : "ERRO AO ENVIAR")}
             </p>
+            {isInvalidKey && (
+              <p className="text-[9px] leading-tight text-white/80">
+                A API Key que você inseriu parece ser inválida. Verifique nas configurações.
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[9px] font-bold">Dúvidas? Staff:</span>
               <a 
@@ -1060,6 +1067,9 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                 Discord
               </a>
             </div>
+            {!isInvalidKey && !isSafetyError && (
+              <p className="text-[8px] opacity-50 break-words mt-1">{errorMessage.slice(0, 50)}...</p>
+            )}
           </div>
         );
       }

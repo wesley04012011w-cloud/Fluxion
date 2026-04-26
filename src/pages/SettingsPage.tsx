@@ -99,10 +99,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     localStorage.setItem('gemini_api_key', apiKey);
+    window.dispatchEvent(new Event('storage'));
   }, [apiKey]);
 
   useEffect(() => {
     localStorage.setItem('gemini_model_preference', selectedModel);
+    window.dispatchEvent(new Event('storage'));
   }, [selectedModel]);
 
   useEffect(() => {
@@ -342,7 +344,7 @@ export default function SettingsPage() {
                   <input
                     type="password"
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    onChange={(e) => setApiKey(e.target.value.trim())}
                     placeholder="Sua Gemini API Key..."
                     className="w-full ui-bg-muted border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs focus:outline-none focus:border-purple-500/50 transition-all ui-text-main ui-border"
                   />

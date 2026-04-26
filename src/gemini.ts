@@ -131,9 +131,12 @@ export const getGeminiResponse = async (
   let lastError: any = null;
   // Fallback chain: Primary reasoning model, fallback to stable generation model, fallback to fast model
   const defaultModelsList = [
-    "gemini-3.1-pro",
+    "gemini-3.1-pro-preview",
     "gemini-2.5-pro",
-    "gemini-3.0-flash"
+    "gemini-2.0-pro-exp-02-05", // another good fallback
+    "gemini-3.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash"
   ];
 
   const modelsToTry = preferredModel && preferredModel !== 'auto' 
@@ -205,12 +208,6 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
           systemInstruction: finalInstruction,
           temperature: 0.7,
         };
-
-        if (currentModel.includes('pro')) {
-           config.thinkingConfig = {
-             thinkingBudget: isChatMode ? 1024 : 4096 
-           };
-        }
 
         const stream = await aiInstance.models.generateContentStream({
           model: currentModel,
