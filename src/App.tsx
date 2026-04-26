@@ -128,10 +128,7 @@ export default function App() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   
   // MODO MANUTENÇÃO FORÇADO (LOCAL)
-  const [hardcodedMaintenance, setHardcodedMaintenance] = useState(() => {
-    // Se o user já bypassou antes, mantém aberto
-    return localStorage.getItem('local_bypass_active') !== 'true';
-  });
+  const [hardcodedMaintenance, setHardcodedMaintenance] = useState(false);
   const [showGhostModal, setShowGhostModal] = useState(false);
   const [ghostEmailInput, setGhostEmailInput] = useState('');
   
