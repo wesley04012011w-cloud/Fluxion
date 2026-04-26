@@ -267,30 +267,45 @@ export default function AdminPage() {
   };
 
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(false);
 
-  const toggleMaintenanceMode = async () => {
+  // Initialize local preview from cloud status
+  useEffect(() => {
+    if (appConfig) {
+      setLocalMaintenancePreview(appConfig.maintenanceMode || false);
+    }
+  }, [appConfig?.maintenanceMode]);
+
+  const toggleLocalPreview = () => {
+    const newState = !localMaintenancePreview;
+    setLocalMaintenancePreview(newState);
+    
+    // Dispatch custom event for App.tsx to catch local change
+    window.dispatchEvent(new CustomEvent('local-maintenance-preview', { 
+      detail: { active: newState } 
+    }));
+
+    toast.info(newState ? 'Visualização Local Ativada' : 'Visualização Local Desativada', {
+      id: 'maintenance-local',
+      description: newState ? 'Você verá o aviso de manutenção agora.' : 'O aviso foi oculto para você.'
+    });
+  };
+
+  const syncMaintenanceToCloud = async () => {
     if (!isAdmin) return;
     setIsSavingMaintenance(true);
-    const isCurrentlyActive = appConfig?.maintenanceMode === true;
-    const newStatus = !isCurrentlyActive;
-    
-    console.log("🛠️ Toggling maintenance from", isCurrentlyActive, "to", newStatus);
     
     try {
       await setDoc(doc(db, 'config', 'main'), {
-        maintenanceMode: newStatus,
+        maintenanceMode: localMaintenancePreview,
         updatedAt: Timestamp.now()
       }, { merge: true });
       
-      // Update local state immediately for better UX
-      setAppConfig(prev => prev ? { ...prev, maintenanceMode: newStatus } : { maintenanceMode: newStatus } as any);
-      
-      toast.success(newStatus ? 'SISTEMA EM MANUTENÇÃO! 🛡️' : 'SISTEMA ONLINE! 🌐', {
-        id: 'maintenance-toggle',
-        description: newStatus ? "Usuários bloqueados." : "Acesso liberado."
+      toast.success(localMaintenancePreview ? 'SISTEMA BLOQUEADO NO CLOUD! 🛡️' : 'SISTEMA LIBERADO NO CLOUD! 🌐', {
+        id: 'maintenance-sync',
+        description: localMaintenancePreview ? "Manutenção ativa para todos os usuários." : "Acesso normal restaurado para todos."
       });
     } catch (error) {
-      console.error("Maintenance toggle failed:", error);
       handleFirestoreError(error, OperationType.UPDATE, 'config/main', user);
     } finally {
       setIsSavingMaintenance(false);
@@ -694,6 +709,7 @@ export default function AdminPage() {
                  <h2 className="text-sm font-black uppercase tracking-tight">Controle de Sistema</h2>
               </div>
               
+              {/* Cloud Status Indicator */}
               <div className={cn(
                 "p-4 rounded-xl border mb-6",
                 appConfig?.maintenanceMode 
@@ -701,36 +717,65 @@ export default function AdminPage() {
                   : "bg-green-500/5 border-green-500/10 text-green-200"
               )}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest">
-                    Modo Manutenção
+                  <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <Activity size={12} className={appConfig?.maintenanceMode ? "text-red-500" : "text-green-500"} />
+                    Status Cloud (Firebase)
                   </span>
                   <span className={cn(
                     "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase",
                     appConfig?.maintenanceMode ? "bg-red-500 text-white" : "bg-green-500 text-white"
                   )}>
-                    {appConfig?.maintenanceMode ? 'ATIVADO' : 'INATIVO'}
+                    {appConfig?.maintenanceMode ? 'BLOQUEADO' : 'ONLINE'}
                   </span>
                 </div>
-                <p className="text-[10px] opacity-60 leading-relaxed font-medium">
-                  {appConfig?.maintenanceMode 
-                    ? "O acesso para usuários comuns está BLOQUEADO. Apenas administradores podem ver a interface."
-                    : "O sistema está operando normalmente para todos os usuários."}
-                </p>
               </div>
 
+              {/* Local Toggle */}
+              <div className="space-y-4 mb-6">
+                <div className="p-4 rounded-xl bg-white/[0.05] border border-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                      Visualizar modo manutenção
+                    </span>
+                    <button 
+                      onClick={toggleLocalPreview}
+                      className={cn(
+                        "w-10 h-5 rounded-full relative transition-all",
+                        localMaintenancePreview ? "bg-red-500" : "bg-gray-700"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 bottom-1 w-3 bg-white rounded-full transition-all",
+                        localMaintenancePreview ? "right-1" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-500 leading-relaxed font-bold uppercase tracking-tight">
+                    {localMaintenancePreview 
+                      ? "O aviso de manutenção está visível para você." 
+                      : "O aviso está oculto para você."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sync Button */}
               <button 
-                onClick={toggleMaintenanceMode}
+                onClick={syncMaintenanceToCloud}
                 disabled={isSavingMaintenance}
                 className={cn(
-                  "w-full font-black text-[10px] py-4 rounded-xl transition-all flex items-center justify-center gap-2",
-                  appConfig?.maintenanceMode
-                    ? "bg-green-600 hover:bg-green-500 text-white"
-                    : "bg-red-600 hover:bg-red-500 text-white"
+                  "w-full font-black text-[10px] py-4 rounded-xl transition-all flex items-center justify-center gap-2 border shadow-lg",
+                  localMaintenancePreview
+                    ? "bg-red-600 hover:bg-red-500 text-white border-red-400/20"
+                    : "bg-green-600 hover:bg-green-500 text-white border-green-400/20"
                 )}
               >
-                {isSavingMaintenance ? <RefreshCw size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
-                {appConfig?.maintenanceMode ? 'DESATIVAR MANUTENÇÃO' : 'ATIVAR MANUTENÇÃO'}
+                {isSavingMaintenance ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                {localMaintenancePreview ? 'SINCRONIZAR: BLOQUEAR TODOS' : 'SINCRONIZAR: LIBERAR TODOS'}
               </button>
+              
+              <p className="mt-3 text-center text-[9px] text-gray-600 font-bold uppercase tracking-widest">
+                Isso altera o status para todos os usuários
+              </p>
             </section>
 
             {/* Banned IPs - MOVED TO TOP OF SIDEBAR */}

@@ -201,7 +201,7 @@ service cloud.firestore {
 
     // Config Rules
     match /config/{configId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin() && isValidConfig(request.resource.data);
     }
 

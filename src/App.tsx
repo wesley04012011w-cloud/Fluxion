@@ -58,6 +58,12 @@ export default function App() {
   const [savedScripts, setSavedScripts] = useState<{id: string, name: string, content: string}[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(() => localStorage.getItem('last_current_chat_id'));
 
+  const isAdmin = user && (
+    user.email === 'wesley04012011w@gmail.com' || 
+    user.email === 'soparonosk37@gmail.com' ||
+    user.uid === 'lNvYzIXKQWQ85n51WgFfM1Axw733'
+  );
+
   useEffect(() => {
     const loadLocal = async () => {
       const local = await localChatService.getChats();
@@ -121,6 +127,8 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(false);
+  const [adminBypassedMode, setAdminBypassedMode] = useState(false);
   const lastMessageTimeRef = useRef<number>(0);
   const requestCountRef = useRef<number>(0);
   const windowStartTimeRef = useRef<number>(0);
@@ -180,8 +188,19 @@ export default function App() {
     }, (error) => {
       console.warn("Could not fetch maintenance status (offline/quota):", error);
     });
-    return () => unsub();
-  }, []);
+
+    // Handle Local Maintenance Preview from Admin Page
+    const handleLocalPreview = (e: any) => {
+      setLocalMaintenancePreview(e.detail.active);
+      if (e.detail.active) setAdminBypassedMode(false); // Force show if manually toggled
+    };
+    window.addEventListener('local-maintenance-preview', handleLocalPreview);
+
+    return () => {
+      unsub();
+      window.removeEventListener('local-maintenance-preview', handleLocalPreview);
+    };
+  }, [isAdmin]);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -479,12 +498,6 @@ export default function App() {
       clearInterval(interval);
     };
   }, [user, userIp]);
-
-  const isAdmin = user && (
-    user.email === 'wesley04012011w@gmail.com' || 
-    user.email === 'soparonosk37@gmail.com' ||
-    user.uid === 'lNvYzIXKQWQ85n51WgFfM1Axw733'
-  );
 
   const isActuallyBlocked = () => {
     if (isAdmin) return false; // Admins never blocked
@@ -1101,7 +1114,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       
       {/* MODO MANUTENÇÃO OVERLAY */}
       <AnimatePresence>
-        {maintenanceMode && !isAdmin && (
+        {(maintenanceMode || (isAdmin && localMaintenancePreview)) && (!isAdmin || !adminBypassedMode) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1132,6 +1145,20 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                   Estamos realizando melhorias técnicas para garantir a melhor experiência possível. Voltaremos em instantes!
                 </p>
               </div>
+
+              {isAdmin && (
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => setAdminBypassedMode(true)}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-[10px] font-black text-white transition-all uppercase tracking-widest shadow-xl shadow-blue-900/20"
+                  >
+                    Continuar como Administrador
+                  </button>
+                  <p className="text-[9px] text-gray-500 font-bold uppercase text-center opacity-60">
+                    Você está vendo isso porque é um Admin
+                  </p>
+                </div>
+              )}
 
               <div className="pt-8 border-t border-white/5">
                 <div className="flex items-center justify-center gap-3 text-blue-400">
