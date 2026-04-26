@@ -95,8 +95,13 @@ export const getGeminiResponse = async (
         selectedIndex = data.selectedApiKeyIndex ?? -1;
         autoMode = data.autoApiKeySelection !== false; // Default to true
       }
-    } catch (error) {
-      console.error("Error fetching keys from Firestore:", error);
+    } catch (error: any) {
+      if (error?.message?.includes('quota') || error?.code?.includes('quota')) {
+        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+        // Silent catch for quota to avoid big console errors
+      } else {
+        console.error("Error fetching keys from Firestore:", error);
+      }
     }
   }
 

@@ -162,11 +162,19 @@ export default function App() {
   const rateLimitedUntilRef = useRef<number>(0);
 
   useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
     const handleQuota = () => {
       setIsQuotaExceeded(true);
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        setIsQuotaExceeded(false);
+      }, 5000); // Esconde após 5 segundos
     };
     window.addEventListener('firestore-quota-exceeded', handleQuota);
-    return () => window.removeEventListener('firestore-quota-exceeded', handleQuota);
+    return () => {
+      window.removeEventListener('firestore-quota-exceeded', handleQuota);
+      if (timeout) clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
@@ -1013,31 +1021,48 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       setIsGenerating(false);
       setStreamingText('');
     } catch (error: any) {
-      console.error('CRITICAL ERROR in handleSendMessage:', error);
       setIsGenerating(false);
       setStreamingText('');
-      
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isSafetyError = errorMessage.toLowerCase().includes('safety') || errorMessage.toLowerCase().includes('finish_reason_safety');
+      const isOverloaded = errorMessage.includes('SISTEMA SOBRECARREGADO');
 
-      toast.error(
-        <div className="flex flex-col gap-2">
-          <p className="font-black text-[10px] uppercase">
-            {isSafetyError ? "CONTEÚDO BLOQUEADO" : "ERRO AO ENVIAR"}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[9px] font-bold">Dúvidas? Staff:</span>
-            <a 
-              href="https://discord.gg/YvRBUyhpZ" 
-              target="_blank" 
-              rel="noreferrer"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
-            >
-              Discord
-            </a>
+      if (!isOverloaded) {
+        console.error('CRITICAL ERROR in handleSendMessage:', error);
+      }
+
+      if (isOverloaded) {
+        toast.error(
+          <div className="flex flex-col gap-2">
+            <p className="font-black text-[11px] uppercase leading-tight">
+              SISTEMA SOBRECARREGADO
+            </p>
+            <p className="text-[10px] leading-tight">
+              Vá em <b>Configurações</b> (ícone de engrenagem) e insira sua própria API Key do Gemini (gratuita) para continuar usando localmente.
+            </p>
           </div>
-        </div>
-      );
+        );
+      } else {
+        toast.error(
+          <div className="flex flex-col gap-2">
+            <p className="font-black text-[10px] uppercase">
+              {isSafetyError ? "CONTEÚDO BLOQUEADO" : "ERRO AO ENVIAR"}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[9px] font-bold">Dúvidas? Staff:</span>
+              <a 
+                href="https://discord.gg/YvRBUyhpZ" 
+                target="_blank" 
+                rel="noreferrer"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
+              >
+                Discord
+              </a>
+            </div>
+          </div>
+        );
+      }
     }
   }, [user, currentChatId, apiKey, chats, localChats, selectedModel, userIp]);
 
