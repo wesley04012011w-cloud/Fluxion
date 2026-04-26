@@ -267,11 +267,13 @@ export default function AdminPage() {
   };
 
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
-  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(false);
+  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
+    return localStorage.getItem('admin_maintenance_preview') === 'true';
+  });
 
-  // Initialize local preview from cloud status
+  // Initialize local preview from cloud status ONLY if not manually set before or to keep in sync
   useEffect(() => {
-    if (appConfig) {
+    if (appConfig && localStorage.getItem('admin_maintenance_preview') === null) {
       setLocalMaintenancePreview(appConfig.maintenanceMode || false);
     }
   }, [appConfig?.maintenanceMode]);
@@ -279,6 +281,7 @@ export default function AdminPage() {
   const toggleLocalPreview = () => {
     const newState = !localMaintenancePreview;
     setLocalMaintenancePreview(newState);
+    localStorage.setItem('admin_maintenance_preview', String(newState));
     
     // Dispatch custom event for App.tsx to catch local change
     window.dispatchEvent(new CustomEvent('local-maintenance-preview', { 
@@ -298,7 +301,7 @@ export default function AdminPage() {
     try {
       await setDoc(doc(db, 'config', 'main'), {
         maintenanceMode: localMaintenancePreview,
-        updatedAt: Timestamp.now()
+        updatedAt: serverTimestamp()
       }, { merge: true });
       
       toast.success(localMaintenancePreview ? 'SISTEMA BLOQUEADO NO CLOUD! 🛡️' : 'SISTEMA LIBERADO NO CLOUD! 🌐', {

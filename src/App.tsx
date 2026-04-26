@@ -127,8 +127,12 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(false);
-  const [adminBypassedMode, setAdminBypassedMode] = useState(false);
+  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
+    return localStorage.getItem('admin_maintenance_preview') === 'true';
+  });
+  const [adminBypassedMode, setAdminBypassedMode] = useState(() => {
+    return localStorage.getItem('admin_bypassed_mode') === 'true';
+  });
   const lastMessageTimeRef = useRef<number>(0);
   const requestCountRef = useRef<number>(0);
   const windowStartTimeRef = useRef<number>(0);
@@ -192,7 +196,10 @@ export default function App() {
     // Handle Local Maintenance Preview from Admin Page
     const handleLocalPreview = (e: any) => {
       setLocalMaintenancePreview(e.detail.active);
-      if (e.detail.active) setAdminBypassedMode(false); // Force show if manually toggled
+      if (e.detail.active) {
+        setAdminBypassedMode(false);
+        localStorage.setItem('admin_bypassed_mode', 'false');
+      }
     };
     window.addEventListener('local-maintenance-preview', handleLocalPreview);
 
@@ -1149,7 +1156,10 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               {isAdmin && (
                 <div className="flex flex-col gap-3">
                   <button
-                    onClick={() => setAdminBypassedMode(true)}
+                    onClick={() => {
+                      setAdminBypassedMode(true);
+                      localStorage.setItem('admin_bypassed_mode', 'true');
+                    }}
                     className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-[10px] font-black text-white transition-all uppercase tracking-widest shadow-xl shadow-blue-900/20"
                   >
                     Continuar como Administrador
