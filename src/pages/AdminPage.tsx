@@ -31,8 +31,9 @@ import {
   serverTimestamp,
   addDoc,
   where,
-  getDocs
-} from 'firebase/firestore';
+  getDocs,
+  getDocFromServer
+} from '../firebaseMock';
 
 const ADMIN_EMAILS = ["wesley04012011w@gmail.com", "soparonosk37@gmail.com"];
 
@@ -42,9 +43,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [openRouterKey, setOpenRouterKey] = useState('');
   const [deepseekKey, setDeepseekKey] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [isSavingDeepseek, setIsSavingDeepseek] = useState(false);
   
   const [users, setUsers] = useState<AppUser[]>([]);
   const [bannedIps, setBannedIps] = useState<any[]>([]);
@@ -85,18 +86,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Fetch Config
-    const configUnsubscribe = onSnapshot(doc(db, 'config', 'main'), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as AppConfig;
-        setAppConfig(data);
-        setDeepseekKey(data.deepseekApiKey || '');
-      } else {
-        setAppConfig({ maintenanceMode: false } as AppConfig);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'config/main', user);
-    });
+    // Fetch Config (Single load to save quota)
+    const fetchConfig = async () => {
+        try {
+            const docSnap = await getDocFromServer(doc(db, 'config', 'main'));
+            if (docSnap.exists()) {
+                const data = docSnap.data() as AppConfig;
+                setAppConfig(data);
+                setDeepseekKey(data.deepseekApiKey || '');
+                setOpenRouterKey(data.openRouterApiKey || '');
+            } else {
+                setAppConfig({ maintenanceMode: false } as AppConfig);
+            }
+        } catch (error) {
+            handleFirestoreError(error, OperationType.GET, 'config/main', user);
+        }
+    };
+    fetchConfig();
 
     // Fetch Users (REMOVED REALTIME LISTENER)
     /*
@@ -111,43 +117,16 @@ export default function AdminPage() {
     );
     */
 
-    // Fetch Announcements
-    const announcementsUnsubscribe = onSnapshot(
-      query(collection(db, 'announcements'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setAnnouncements(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'announcements', user);
-      }
-    );
-
-    // Fetch Banned IPs (REMOVED REALTIME LISTENER)
-    /*
-    const bannedIpsUnsubscribe = onSnapshot(collection(db, 'banned_ips'), (snapshot) => {
-      setBannedIps(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'banned_ips', user);
-    });
-    */
-
-    // Fetch Access Logs (REMOVED REALTIME LISTENER)
-    /*
-    const accessUnsubscribe = onSnapshot(
-      query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)),
-      (snapshot) => {
-        setAccessLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'access_logs', user);
-      }
-    );
-    */
-
-    return () => {
-      configUnsubscribe();
-      announcementsUnsubscribe();
+    // Fetch Announcements (REMOVED REALTIME LISTENER)
+    const fetchAnnouncements = async () => {
+        try {
+            const snap = await getDocs(query(collection(db, 'announcements'), orderBy('createdAt', 'desc')));
+            setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (error) {
+            handleFirestoreError(error, OperationType.LIST, 'announcements', user);
+        }
     };
+    fetchAnnouncements();
   }, [isAdmin]);
 
   const fetchLogsAndIps = async () => {
@@ -167,6 +146,23 @@ export default function AdminPage() {
     } catch (e) {
       handleFirestoreError(e, OperationType.LIST, 'logs/ips/users', user);
       toast.error('Erro ao buscar dados.', { id: 'fetch-logs' });
+    }
+  };
+
+  const saveAiKeys = async () => {
+    setIsSavingConfig(true);
+    toast.loading('Salvando chaves na nuvem...', { id: 'save-keys' });
+    try {
+      await updateDoc(doc(db, 'config', 'main'), {
+        deepseekApiKey: deepseekKey,
+        openRouterApiKey: openRouterKey
+      });
+      toast.success('Chaves salvas!', { id: 'save-keys' });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'config/main', user);
+      toast.error('Falha ao salvar chaves', { id: 'save-keys' });
+    } finally {
+      setIsSavingConfig(false);
     }
   };
 
@@ -730,28 +726,54 @@ export default function AdminPage() {
                  </div>
                  <h2 className="text-sm font-black uppercase tracking-tight">Gemini AI Engine</h2>
               </div>
-              <div className="space-y-4">
-                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Estado de Chaves</span>
-                    <button 
-                      onClick={async () => {
-                        const newAuto = appConfig?.autoApiKeySelection === false;
-                        try {
-                          await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
-                        } catch (e) {
-                          handleFirestoreError(e, OperationType.UPDATE, 'config,main', user);
-                        }
-                      }}
-                      className={cn(
-                        "text-[9px] font-black px-3 py-1 rounded-full border transition-all",
-                        appConfig?.autoApiKeySelection !== false 
-                          ? "bg-green-500/10 text-green-500 border-green-500/20"
-                          : "bg-gray-500/10 text-gray-500 border-gray-500/20"
-                      )}
-                    >
-                      {appConfig?.autoApiKeySelection !== false ? 'RODÍZIO AUTO: LIGADO' : 'SELEÇÃO MANUAL: ATIVA'}
-                    </button>
-                 </div>
+
+               <div className="space-y-4 py-4 border-b border-white/5">
+                 <h3 className="text-white text-xs font-black uppercase">Chaves de API Externas</h3>
+                 <input 
+                     type="password"
+                     value={deepseekKey}
+                     onChange={(e) => setDeepseekKey(e.target.value)}
+                     placeholder="DeepSeek API Key (sk-...)"
+                     className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono"
+                 />
+                 <input 
+                     type="password"
+                     value={openRouterKey}
+                     onChange={(e) => setOpenRouterKey(e.target.value)}
+                     placeholder="OpenRouter API Key (sk-or-...)"
+                     className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono"
+                 />
+                 <button 
+                     onClick={saveAiKeys}
+                     disabled={isSavingConfig}
+                     className="text-[9px] font-black uppercase bg-blue-600/20 text-blue-400 px-3 py-2 rounded-lg w-full border border-blue-500/20 hover:bg-blue-600/30 disabled:opacity-50"
+                 >
+                     {isSavingConfig ? 'SALVANDO...' : 'SALVAR CHAVES EXTERNAS'}
+                 </button>
+               </div>
+               
+               <div className="space-y-4 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                     <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Estado de Chaves</span>
+                     <button 
+                       onClick={async () => {
+                         const newAuto = appConfig?.autoApiKeySelection === false;
+                         try {
+                           await updateDoc(doc(db, 'config', 'main'), { autoApiKeySelection: newAuto });
+                         } catch (e) {
+                           handleFirestoreError(e, OperationType.UPDATE, 'config,main', user);
+                         }
+                       }}
+                       className={cn(
+                         "text-[9px] font-black px-3 py-1 rounded-full border transition-all",
+                         appConfig?.autoApiKeySelection !== false 
+                           ? "bg-green-500/10 text-green-500 border-green-500/20"
+                           : "bg-gray-500/10 text-gray-500 border-gray-500/20"
+                       )}
+                     >
+                       {appConfig?.autoApiKeySelection !== false ? 'RODÍZIO AUTO: LIGADO' : 'SELEÇÃO MANUAL: ATIVA'}
+                     </button>
+                  </div>
                  
                  <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar">
                     {localGeminiKeys.map((key, idx) => (

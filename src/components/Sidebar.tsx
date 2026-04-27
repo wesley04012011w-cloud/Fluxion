@@ -20,6 +20,7 @@ import {
 import { Chat, cn } from '../types';
 import { User } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
+import { creditService } from '../services/creditService';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -45,6 +46,7 @@ interface SidebarProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   onExportChat?: (id: string) => void;
+  appUser: any;
 }
 
 const Sidebar = React.memo(({
@@ -70,7 +72,8 @@ const Sidebar = React.memo(({
   setIsOptimized,
   selectedModel,
   setSelectedModel,
-  onExportChat
+  onExportChat,
+  appUser
 }: SidebarProps) => {
   const navigate = useNavigate();
   const isAdmin = user?.email === 'wesley04012011w@gmail.com' || user?.email === 'soparonosk37/gmail.com' || user?.email === 'soparonosk37@gmail.com';
@@ -107,6 +110,12 @@ const Sidebar = React.memo(({
         </div>
 
         <div className="relative mb-4">
+          {appUser && (
+            <div className="bg-white/5 border border-white/10 rounded-lg p-2.5 mb-2 text-xs flex items-center justify-between">
+              <span className="text-gray-400 font-bold">Créditos:</span>
+              <span className="text-[var(--accent-primary)] font-black">{appUser.creditos}</span>
+            </div>
+          )}
           <button
             onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
             className="flex items-center justify-between w-full p-2.5 rounded-lg bg-[var(--accent-primary)] hover:opacity-90 text-[var(--bg-primary)] font-bold transition-all shadow-lg shadow-white/5 text-xs ui-border !border-transparent"
@@ -124,7 +133,7 @@ const Sidebar = React.memo(({
                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className="absolute top-full left-0 w-full mt-1 bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl z-[60] p-1 overflow-hidden"
+                className="absolute top-full left-0 w-full mt-1 ui-bg-secondary backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl z-[60] p-1 overflow-hidden"
               >
                 <button
                   onClick={() => {
@@ -132,13 +141,16 @@ const Sidebar = React.memo(({
                     setIsModeDropdownOpen(false);
                     if (window.innerWidth < 1024) setIsSidebarOpen(false);
                   }}
-                  className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:bg-white/5 text-white transition-all text-left text-xs group"
+                  className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:border-white/20 border border-transparent transition-all text-white text-left text-xs group"
                 >
-                  <div className="p-1.5 rounded bg-white/5 group-hover:bg-[var(--accent-primary)] group-hover:text-black transition-all">
+                  <div className="p-1.5 rounded bg-black/40 group-hover:bg-[var(--accent-primary)] group-hover:text-black transition-all">
                     <Plus size={14} />
                   </div>
                   <div>
-                    <div className="font-bold">Normal</div>
+                    <div className="font-bold flex items-center justify-between gap-4">
+                      <span>Normal</span>
+                      <span className="text-[9px] bg-white/10 px-1.5 py-0.5 rounded text-white">{creditService.getCost('pro')} Cr</span>
+                    </div>
                     <div className="text-[10px] text-gray-500 font-medium">Chat padrão de codificação</div>
                   </div>
                 </button>
@@ -146,38 +158,36 @@ const Sidebar = React.memo(({
                 <div className="h-px bg-white/5 my-1" />
 
                 <button
-                  onClick={() => {
-                    createHeavyChat?.();
-                    setIsModeDropdownOpen(false);
-                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
-                  }}
-                  className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:bg-white/5 text-white transition-all text-left text-xs group"
+                  disabled
+                  className="flex items-center gap-2 w-full p-2.5 rounded-lg border border-transparent transition-all text-gray-500 text-left text-xs group"
                 >
-                  <div className="p-1.5 rounded bg-white/5 group-hover:bg-[var(--accent-primary)] group-hover:text-black transition-all">
+                  <div className="p-1.5 rounded bg-black/40">
                     <Zap size={14} />
                   </div>
                   <div>
-                    <div className="font-bold">Heavy</div>
-                    <div className="text-[10px] text-gray-500 font-medium">Processamento de scripts longos</div>
+                    <div className="font-bold flex items-center justify-between">
+                      <span>Heavy</span>
+                      <span className="text-[9px] bg-white/5 px-1.5 py-0.5 rounded text-gray-600">INDISP.</span>
+                    </div>
+                    <div className="text-[10px] text-gray-600 font-medium">Processamento de scripts longos</div>
                   </div>
                 </button>
 
                 <div className="h-px bg-white/5 my-1" />
 
                 <button
-                  onClick={() => {
-                    createConversationChat?.();
-                    setIsModeDropdownOpen(false);
-                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
-                  }}
-                  className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:bg-white/5 text-white transition-all text-left text-xs group"
+                  disabled
+                  className="flex items-center gap-2 w-full p-2.5 rounded-lg border border-transparent transition-all text-gray-500 text-left text-xs group"
                 >
-                  <div className="p-1.5 rounded bg-white/5 group-hover:bg-[var(--accent-primary)] group-hover:text-black transition-all">
+                  <div className="p-1.5 rounded bg-black/40">
                     <MessageSquare size={14} />
                   </div>
                   <div>
-                    <div className="font-bold">Modo Chat</div>
-                    <div className="text-[10px] text-gray-500 font-medium">Conversa casual e resenha</div>
+                    <div className="font-bold flex items-center justify-between">
+                      <span>Modo Chat</span>
+                      <span className="text-[9px] bg-white/5 px-1.5 py-0.5 rounded text-gray-600">INDISP.</span>
+                    </div>
+                    <div className="text-[10px] text-gray-600 font-medium">Conversa casual e resenha</div>
                   </div>
                 </button>
               </motion.div>

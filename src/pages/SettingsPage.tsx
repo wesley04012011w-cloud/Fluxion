@@ -32,34 +32,23 @@ import {
   orderBy, 
   onSnapshot, 
   addDoc, 
+  getDocs,
   serverTimestamp 
-} from 'firebase/firestore';
-
-const THEMES = [
-  { id: 'fluxion', name: 'Fluxion', icon: Zap, color: '#ffffff' },
-  { id: 'midnight', name: 'Midnight', icon: Moon, color: '#38bdf8' },
-  { id: 'matrix', name: 'Matrix', icon: Terminal, color: '#22c55e' },
-  { id: 'ruby', name: 'Ruby Dark', icon: Flame, color: '#ef4444' },
-  { id: 'cyberpunk', name: 'Cyberpunk', icon: Zap, color: '#ff00ff' },
-  { id: 'deepsea', name: 'Deep Sea', icon: Moon, color: '#14b8a6' },
-  { id: 'sunset', name: 'Sunset', icon: Cloud, color: '#f97316' },
-  { id: 'purple', name: 'Void Purple', icon: Palette, color: '#a855f7' }
-];
+} from '../firebaseMock';
 
 const MODELS = [
   { id: 'auto', name: 'Automático (Fallback)', desc: 'Troca se houver erro ou cota cheia' },
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (Heavy)', desc: 'Melhor raciocínio para scripts complexos' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Estável)', desc: 'Equilíbrio entre velocidade e inteligência' },
-  { id: 'gemini-3-flash-preview', name: '3.0 Flash (Veloz)', desc: 'Respostas instantâneas e maior cota' }
+  { id: 'gemini-3-flash-preview', name: '3.0 Flash (Veloz)', desc: 'Respostas instantâneas e maior cota' },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat (V3)', desc: 'Modelo de chat eficiente' },
+  { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1)', desc: 'Modelo especializado em raciocínio' }
 ];
 
 export default function SettingsPage() {
-  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('app_theme') || 'fluxion');
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem('github_token') || '');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_model_preference') || 'auto');
   const [isOptimized, setIsOptimized] = useState(() => localStorage.getItem('app_optimized') === 'true');
-  const [isGlowEnabled, setIsGlowEnabled] = useState(() => localStorage.getItem('app_glow') !== 'false');
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [repoPath, setRepoPath] = useState('');
@@ -80,20 +69,6 @@ export default function SettingsPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    localStorage.setItem('app_glow', String(isGlowEnabled));
-    window.dispatchEvent(new Event('storage'));
-  }, [isGlowEnabled]);
-
-  const selectedTheme = THEMES.find(t => t.id === currentTheme) || THEMES[0];
-
-  useEffect(() => {
-    localStorage.setItem('app_theme', currentTheme);
-    document.body.className = `theme-${currentTheme}`;
-    // Dispatch custom event to update other components if needed
-    window.dispatchEvent(new Event('storage'));
-  }, [currentTheme]);
-
-  useEffect(() => {
     localStorage.setItem('github_token', githubToken);
   }, [githubToken]);
 
@@ -102,10 +77,7 @@ export default function SettingsPage() {
     window.dispatchEvent(new Event('storage'));
   }, [apiKey]);
 
-  useEffect(() => {
-    localStorage.setItem('gemini_model_preference', selectedModel);
-    window.dispatchEvent(new Event('storage'));
-  }, [selectedModel]);
+// Removed model effects
 
   useEffect(() => {
     localStorage.setItem('app_optimized', String(isOptimized));
@@ -171,26 +143,27 @@ export default function SettingsPage() {
       return () => window.removeEventListener('storage', handleStorage);
     }
 
-    const q = query(
-      collection(db, 'scripts'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const scripts = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        name: doc.data().name, 
-        content: doc.data().content 
-      }));
-      setSavedScripts(scripts);
-      setScriptsLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'scripts', user);
-      setScriptsLoading(false);
-    });
-
-    return unsubscribe;
+    const fetchScripts = async () => {
+      try {
+        const q = query(
+          collection(db, 'scripts'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const scripts = snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          name: doc.data().name, 
+          content: doc.data().content 
+        }));
+        setSavedScripts(scripts);
+        setScriptsLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'scripts', user);
+        setScriptsLoading(false);
+      }
+    };
+    fetchScripts();
   }, [user]);
 
   const handleLoadFile = async (file: GitHubFile) => {
@@ -304,56 +277,22 @@ export default function SettingsPage() {
               <h2 className="text-xl font-bold tracking-tight">Motor de IA (Gemini)</h2>
             </div>
 
-            <div className="space-y-6">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block ml-1">
-                  Modelo de Processamento
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {MODELS.map((model) => (
-                    <button
-                      key={model.id}
-                      onClick={() => setSelectedModel(model.id)}
-                      className={cn(
-                        "text-left p-4 rounded-xl border transition-all ui-border group",
-                        selectedModel === model.id 
-                          ? "bg-purple-500/10 border-purple-500/30 ring-1 ring-purple-500/20" 
-                          : "bg-black/20 border-white/5 hover:border-white/20"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={cn("text-xs font-black uppercase tracking-tight", selectedModel === model.id ? "text-purple-300" : "text-gray-300")}>
-                          {model.name}
-                        </span>
-                        {selectedModel === model.id && <div className="w-2 h-2 bg-purple-500 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.5)]" />}
-                      </div>
-                      <p className="text-[10px] text-gray-500 leading-snug group-hover:text-gray-400 transition-colors">
-                        {model.desc}
-                      </p>
-                    </button>
-                  ))}
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block ml-1">
+                    Gemini API Key
+                  </label>
+                  <div className="relative">
+                    <KeyIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value.trim())}
+                      placeholder="Sua Gemini API Key"
+                      className="w-full ui-bg-muted border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs focus:outline-none focus:border-purple-500/50 transition-all ui-text-main ui-border"
+                    />
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block ml-1">
-                  API Key Personalizada (Opcional)
-                </label>
-                <div className="relative">
-                  <KeyIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value.trim())}
-                    placeholder="Sua Gemini API Key..."
-                    className="w-full ui-bg-muted border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs focus:outline-none focus:border-purple-500/50 transition-all ui-text-main ui-border"
-                  />
-                </div>
-                <p className="mt-2 text-[9px] ui-text-muted leading-relaxed">
-                  Deixe vazio para usar a chave padrão do sistema. Pegue sua chave grátis em{' '}
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">AI Studio</a>.
-                </p>
-              </div>
 
               <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
                 <div className="flex items-center gap-3">
@@ -378,115 +317,6 @@ export default function SettingsPage() {
                   )} />
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* Tema Estético */}
-          <div className={cn(
-            "p-6 md:p-8 ui-card border border-white/5 bg-white/[0.02] relative transition-all duration-300",
-            isDropdownOpen ? "z-50" : "z-10"
-          )}>
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-2 bg-blue-500/10 rounded-lg ui-border border-blue-500/20 text-blue-400">
-                <Palette size={20} />
-              </div>
-              <h2 className="text-xl font-bold tracking-tight">Customização Visual</h2>
-            </div>
-
-            <div className="relative" ref={dropdownRef}>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block ml-1">
-                Seletor de Tema (Geral)
-              </label>
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full flex items-center justify-between p-4 bg-black/40 hover:bg-black/50 transition-all ui-border group rounded-xl border-white/5"
-              >
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="p-2 rounded-lg ui-border !border-transparent"
-                    style={{ backgroundColor: `${selectedTheme.color}15`, color: selectedTheme.color }}
-                  >
-                    <selectedTheme.icon size={18} />
-                  </div>
-                  <span className="font-bold text-sm tracking-tight">{selectedTheme.name}</span>
-                </div>
-                <ChevronDown size={18} className={cn("text-gray-500 transition-transform duration-300", isDropdownOpen && "rotate-180")} />
-              </button>
-
-              <AnimatePresence>
-                {isDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 10, scale: 1 }}
-                    exit={{ opacity: 0, y: 0, scale: 0.98 }}
-                    className="absolute top-full left-0 w-full z-[100] ui-card overflow-y-auto max-h-[300px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-2 space-y-1 bg-[#0a0a0a] border border-white/10 rounded-2xl custom-scrollbar"
-                  >
-                    {THEMES.map((theme) => (
-                      <button
-                        key={theme.id}
-                        onClick={() => {
-                          setCurrentTheme(theme.id);
-                          setIsDropdownOpen(false);
-                        }}
-                        className={cn(
-                          "w-full flex items-center justify-between p-3 transition-all rounded-xl",
-                          currentTheme === theme.id 
-                            ? "bg-white/10 text-white" 
-                            : "text-gray-400 hover:bg-white/5 hover:text-white"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className="p-2 rounded-lg ui-border !border-transparent"
-                            style={{ backgroundColor: `${theme.color}15`, color: theme.color }}
-                          >
-                            <theme.icon size={14} />
-                          </div>
-                          <span className="text-xs font-black uppercase tracking-tight">{theme.name}</span>
-                        </div>
-                        {currentTheme === theme.id && <div className="w-4 h-4 bg-white rounded-full flex items-center justify-center"><Check size={10} strokeWidth={4} className="text-black" /></div>}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="mt-8 grid grid-cols-8 gap-1.5 h-1">
-               {THEMES.map(theme => (
-                 <div 
-                  key={`preview-${theme.id}`}
-                  className={cn(
-                    "h-full rounded-full transition-all duration-700",
-                    currentTheme === theme.id ? "opacity-100 ring-2 ring-white/20" : "opacity-20"
-                  )}
-                  style={{ backgroundColor: theme.color }}
-                 />
-               ))}
-            </div>
-
-            <div className="mt-8 flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg ui-border", isGlowEnabled ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-white/5 text-gray-500")}>
-                  <Zap size={18} className={isGlowEnabled ? "animate-pulse" : ""} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold">Brilho do Tema no Fundo</h3>
-                  <p className="text-[9px] text-gray-500">Adiciona um leve degradê com a cor do tema na parte inferior.</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsGlowEnabled(!isGlowEnabled)}
-                className={cn(
-                  "w-12 h-6 rounded-full relative transition-all duration-300",
-                  isGlowEnabled ? "bg-purple-500" : "bg-gray-800"
-                )}
-              >
-                <div className={cn(
-                  "absolute top-1 w-4 h-4 rounded-full transition-all duration-300",
-                  isGlowEnabled ? "right-1 bg-white" : "left-1 bg-gray-400"
-                )} />
-              </button>
             </div>
           </div>
 

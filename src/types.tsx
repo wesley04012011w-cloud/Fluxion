@@ -1,5 +1,5 @@
 import React from 'react';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from './firebaseMock';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'sonner';
@@ -34,6 +34,9 @@ export interface AppUser {
   lastIp?: string;
   isBanned?: boolean;
   blockedUntil?: Timestamp;
+  creditos: number;
+  lastUsageTimestamp?: Timestamp;
+  role?: string;
 }
 
 export interface BannedIP {
@@ -49,6 +52,7 @@ export interface AppConfig {
   geminiApiKeys: string[];
   groqApiKey?: string;
   deepseekApiKey?: string;
+  openRouterApiKey?: string;
   selectedApiKeyIndex?: number;
   autoApiKeySelection?: boolean;
   maintenanceMode?: boolean;
@@ -157,47 +161,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   if (isQuotaError) {
     if (!(window as any)._quotaToastSent) {
       (window as any)._quotaToastSent = true;
-      toast.error(
-        <div className="flex flex-col gap-2">
-          <p className="font-black text-[10px] uppercase">LIMITE DIÁRIO ALCANÇADO!</p>
-          <p className="text-[9px] opacity-70">O sistema atingiu a cota gratuita. Tente novamente em instantes.</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[9px] font-bold">Algum erro? Reporte em:</span>
-            <a 
-              href="https://discord.gg/YvRBUyhpZ" 
-              target="_blank" 
-              rel="noreferrer"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
-            >
-              Discord
-            </a>
-          </div>
-        </div>, 
-        { duration: 10000 }
-      );
+      console.warn("LIMITE DIÁRIO ALCANÇADO!");
       window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
     }
     return; // Don't throw for quota
   }
 
   if (isAuthError) {
-    toast.error(
-      <div className="flex flex-col gap-2">
-        <p className="font-black text-[10px] uppercase">ERRO DE PERMISSÃO</p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-[9px] font-bold">Algum erro? Reporte em:</span>
-          <a 
-            href="https://discord.gg/YvRBUyhpZ" 
-            target="_blank" 
-            rel="noreferrer"
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
-          >
-            Discord
-          </a>
-        </div>
-      </div>,
-      { duration: 5000 }
-    );
+    console.warn("ERRO DE PERMISSÃO");
   }
 
   if (isNetworkError) {
@@ -207,24 +178,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
   // Any other error
   if (!isQuotaError && !isAuthError && !isNetworkError) {
-    toast.error(
-      <div className="flex flex-col gap-2">
-        <p className="font-black text-[10px] uppercase text-red-400">ERRO DE SISTEMA</p>
-        <p className="text-[9px] opacity-70 font-mono truncate">{errInfo.error}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-[9px] font-bold">Reporte Staff:</span>
-          <a 
-            href="https://discord.gg/YvRBUyhpZ" 
-            target="_blank" 
-            rel="noreferrer"
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-[8px] font-black uppercase transition-all"
-          >
-            Discord
-          </a>
-        </div>
-      </div>,
-      { duration: 6000 }
-    );
+    console.error("ERRO DE SISTEMA", errInfo.error);
   }
 
   // Throw only for critical write errors to trigger catch blocks

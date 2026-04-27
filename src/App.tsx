@@ -23,8 +23,10 @@ import {
   setDoc,
   Timestamp,
   limit,
-  getDocFromServer
-} from 'firebase/firestore';
+  getDoc,
+  getDocFromServer,
+  getDocs
+} from './firebaseMock';
 import { getGeminiResponse, geminiModel } from './gemini';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import Sidebar from './components/Sidebar';
@@ -32,10 +34,9 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ConfirmationModal from './components/ConfirmationModal';
 import SaveScriptModal from './components/SaveScriptModal';
-import { Chat, Message, OperationType, handleFirestoreError, ChatMode, UserStats } from './types';
+import { Chat, Message, OperationType, handleFirestoreError, ChatMode, UserStats, AppUser } from './types';
 import { localChatService } from './services/localChatService';
 import AuthModal from './components/AuthModal';
-import NotificationsModal from './components/NotificationsModal';
 import { Toaster, toast } from 'sonner';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -45,7 +46,7 @@ import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [userStatusLoaded, setUserStatusLoaded] = useState(false);
@@ -120,11 +121,9 @@ export default function App() {
   const [streamingText, setStreamingText] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_model_preference') || 'auto');
-  const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'fluxion');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   
   // MODO MANUTENÇÃO FORÇADO (LOCAL)
@@ -144,16 +143,7 @@ export default function App() {
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
-    const handleQuota = () => {
-      setIsQuotaExceeded(true);
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        setIsQuotaExceeded(false);
-      }, 5000); // Esconde após 5 segundos
-    };
-    window.addEventListener('firestore-quota-exceeded', handleQuota);
     return () => {
-      window.removeEventListener('firestore-quota-exceeded', handleQuota);
       if (timeout) clearTimeout(timeout);
     };
   }, []);
@@ -185,15 +175,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Monitor Maintenance Mode from System Config
-    const unsub = onSnapshot(doc(db, 'config', 'main'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setMaintenanceMode(data.maintenanceMode || false);
+    // Monitor Maintenance Mode from System Config (Single load to save quota)
+    const fetchConfig = async () => {
+      try {
+        const snap = await getDocFromServer(doc(db, 'config', 'main'));
+        if (snap.exists()) {
+          const data = snap.data();
+          setMaintenanceMode(data.maintenanceMode || false);
+        }
+      } catch (error) {
+        console.warn("Could not fetch maintenance status (offline/quota):", error);
       }
-    }, (error) => {
-      console.warn("Could not fetch maintenance status (offline/quota):", error);
-    });
+    };
+    fetchConfig();
 
     // Handle Local Maintenance Preview from Admin Page
     const handleLocalPreview = (e: any) => {
@@ -206,10 +200,9 @@ export default function App() {
     window.addEventListener('local-maintenance-preview', handleLocalPreview);
 
     return () => {
-      unsub();
       window.removeEventListener('local-maintenance-preview', handleLocalPreview);
     };
-  }, [isAdmin]);
+  }, []);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -265,7 +258,8 @@ export default function App() {
       const ipKey = ip.replace(/\./g, '_');
       const ipDocRef = doc(db, 'banned_ips', ipKey);
       
-      const unsub = onSnapshot(ipDocRef, (snapshot) => {
+      try {
+        const snapshot = await getDoc(ipDocRef);
         if (snapshot.exists()) {
           setIsIpBanned(true);
           console.log("🚫 Status: IP Banido", ip);
@@ -274,11 +268,9 @@ export default function App() {
           setIsIpBanned(false);
           console.log("✅ Status: IP Limpo", ip);
         }
-      }, (error) => {
+      } catch (error) {
         handleFirestoreError(error, OperationType.GET, `banned_ips/${ipKey}`, user);
-      });
-      
-      return unsub;
+      }
     };
     fetchIpAndCheckBan();
   }, []);
@@ -296,11 +288,6 @@ export default function App() {
   }, [selectedModel]);
 
   useEffect(() => {
-    localStorage.setItem('app_theme', theme);
-    document.body.className = `theme-${theme}`;
-  }, [theme]);
-
-  useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -312,7 +299,6 @@ export default function App() {
     const handleStorageChange = () => {
       setApiKey(localStorage.getItem('gemini_api_key') || '');
       setSelectedModel(localStorage.getItem('gemini_model_preference') || 'auto');
-      setTheme(localStorage.getItem('app_theme') || 'fluxion');
       setIsOptimized(localStorage.getItem('app_optimized') === 'true');
       setIsGlowEnabled(localStorage.getItem('app_glow') !== 'false');
       
@@ -392,32 +378,68 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
+      setAppUser(null);
+      return;
+    }
+    const fetchAppUser = async () => {
+       try {
+         const rehydrateAppUser = (data: any): AppUser => {
+            if (data.lastUsageTimestamp && data.lastUsageTimestamp.seconds) {
+                data.lastUsageTimestamp = new Timestamp(data.lastUsageTimestamp.seconds, data.lastUsageTimestamp.nanoseconds);
+            }
+            return data as AppUser;
+         };
+
+         const cached = sessionStorage.getItem(`appUser_${user.uid}`);
+         if (cached) {
+           setAppUser(rehydrateAppUser(JSON.parse(cached)));
+           return;
+         }
+         
+         const userDoc = await getDoc(doc(db, 'users', user.uid));
+         if (userDoc.exists()) {
+           const data = userDoc.data() as AppUser;
+           setAppUser(data);
+           sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(data));
+         }
+       } catch (e: any) {
+          console.error("Error fetching app user", e);
+          if (String(e).toLowerCase().includes('quota')) {
+            const fallbackUser: AppUser = {
+              uid: user.uid, 
+              role: 'user', 
+              displayName: user.displayName || 'Unknown', 
+              email: user.email || '', 
+              photoURL: user.photoURL,
+              lastActive: Timestamp.now(),
+              isOnline: true,
+              creditos: 100
+            };
+            setAppUser(fallbackUser);
+            sessionStorage.setItem('appUser_' + user.uid, JSON.stringify(fallbackUser));
+          }
+        }
+    };
+    
+    fetchAppUser();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
       setUserStatus(null);
       setUserStatusLoaded(true);
       return;
     }
 
-    // Monitorar status do usuário em tempo real
-    const unsub = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setUserStatus({
-          banned: data.isBanned || false,
-          blockedUntil: data.blockedUntil
-        });
-      } else {
-        setUserStatus({ banned: false });
-      }
-      setUserStatusLoaded(true);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`, user);
-      setUserStatusLoaded(true);
-    });
-
+    setUserStatusLoaded(true);
     // Batimento cardíaco de presença e registro de IP agressivo
     const updatePresence = async () => {
       // Evitar logs se já estivermos detectados como bloqueados
       if (isIpBanned) return; 
+
+      // Evitar atualizar se já atualizamos recentemente (e.g., nos últimos 15 minutos)
+      const lastUpdate = localStorage.getItem('last_presence_update');
+      if (lastUpdate && Date.now() - parseInt(lastUpdate) < 15 * 60 * 1000) return;
 
       try {
         let currentIp = userIp || localStorage.getItem('last_user_ip');
@@ -461,52 +483,24 @@ export default function App() {
           email: user.email,
           displayName: user.displayName || 'Usuário Fluxion',
           photoURL: user.photoURL,
-          lastActive: serverTimestamp(),
-          isOnline: true,
           updatedAt: serverTimestamp(),
-          fingerprint: fingerprint
         };
 
         if (currentIp) {
           presenceData.lastIp = currentIp;
           localStorage.setItem('last_user_ip', currentIp);
-          
-          // Log extra de segurança para capturar invasores (agora com fingerprint)
-          const logRef = doc(db, 'access_logs', `${user.uid}_${Date.now()}`);
-          setDoc(logRef, {
-            uid: user.uid,
-            email: user.email,
-            ip: currentIp,
-            fingerprint: fingerprint,
-            timestamp: serverTimestamp()
-          }).catch(() => {});
-        } else {
-          // Log de acesso sem IP (suspeito ou bloqueado)
-          const logRef = doc(db, 'access_logs', `NOIP_${user.uid}_${Date.now()}`);
-          setDoc(logRef, {
-            uid: user.uid,
-            email: user.email,
-            ip: 'BLOCKED/HIDDEN',
-            fingerprint: fingerprint,
-            timestamp: serverTimestamp(),
-            suspicious: true
-          }).catch(() => {});
         }
 
         await setDoc(doc(db, 'users', user.uid), presenceData, { merge: true });
+        localStorage.setItem('last_presence_update', Date.now().toString());
       } catch (e) {
         console.error("Presence update failed:", e);
       }
     };
 
     updatePresence();
-    const interval = setInterval(updatePresence, 60000); // 1 minuto
-    
-    return () => {
-      unsub();
-      clearInterval(interval);
-    };
-  }, [user, userIp]);
+  }, [user]);
+
 
   const isActuallyBlocked = () => {
     if (isAdmin) return false; // Admins never blocked
@@ -534,29 +528,35 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const qAnnouncements = query(collection(db, 'announcements'), where('isActive', '==', true));
-    const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
-      setActiveAnnouncementsCount(snapshot.size);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'announcements', user);
-    });
-    return () => unsubAnnouncements();
+    const fetchAnnouncements = async () => {
+      try {
+        const qAnnouncements = query(collection(db, 'announcements'), where('isActive', '==', true));
+        const snapshot = await getDocs(qAnnouncements);
+        setActiveAnnouncementsCount(snapshot.size);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'announcements', user);
+      }
+    };
+    fetchAnnouncements();
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, 'chats'),
-      where('userId', '==', user.uid),
-      orderBy('updatedAt', 'desc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
-      setChats(chatList);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'chats', user);
-    });
-    return unsubscribe;
+    const fetchChats = async () => {
+      try {
+        const q = query(
+          collection(db, 'chats'),
+          where('userId', '==', user.uid),
+          orderBy('updatedAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
+        setChats(chatList);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, 'chats', user);
+      }
+    };
+    fetchChats();
   }, [user]);
 
   useEffect(() => {
@@ -566,27 +566,30 @@ export default function App() {
       if (offline) setSavedScripts(JSON.parse(offline));
       return;
     }
-    const q = query(
-      collection(db, 'scripts'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const scriptsList = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        name: doc.data().name, 
-        content: doc.data().content 
-      }));
-      setSavedScripts(scriptsList);
-      // Cache scripts for offline viewing/copying
-      localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
-    }, (error) => {
-      // On error (like offline), try to load from cache
-      const cached = localStorage.getItem('saved_scripts_offline');
-      if (cached) setSavedScripts(JSON.parse(cached));
-      handleFirestoreError(error, OperationType.LIST, 'scripts', user);
-    });
-    return unsubscribe;
+    const fetchScripts = async () => {
+      try {
+        const q = query(
+          collection(db, 'scripts'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const scriptsList = snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          name: doc.data().name, 
+          content: doc.data().content 
+        }));
+        setSavedScripts(scriptsList);
+        // Cache scripts for offline viewing/copying
+        localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
+      } catch (error) {
+        // On error (like offline), try to load from cache
+        const cached = localStorage.getItem('saved_scripts_offline');
+        if (cached) setSavedScripts(JSON.parse(cached));
+        handleFirestoreError(error, OperationType.LIST, 'scripts', user);
+      }
+    };
+    fetchScripts();
   }, [user]);
 
   useEffect(() => {
@@ -595,21 +598,24 @@ export default function App() {
     // Se o chat for local (ID começa com local_), não buscamos na nuvem
     if (currentChatId.startsWith('local_')) return;
 
-    const q = query(
-      collection(db, `chats/${currentChatId}/messages`),
-      orderBy('createdAt', 'asc')
-    );
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      if (!snapshot.empty) {
-        const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-        setMessages(msgList);
-        // Sincroniza com local para visualização offline
-        await localChatService.saveMessages(currentChatId, msgList);
+    const fetchMessages = async () => {
+      try {
+        const q = query(
+          collection(db, `chats/${currentChatId}/messages`),
+          orderBy('createdAt', 'asc')
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+          setMessages(msgList);
+          // Sincroniza com local para visualização offline
+          await localChatService.saveMessages(currentChatId, msgList);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
-    });
-    return unsubscribe;
+    };
+    fetchMessages();
   }, [currentChatId, user]);
 
   const handleSignIn = async () => {
@@ -797,10 +803,11 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         return;
       }
 
-      // Check cooldown (5 min)
+      // Check cooldown (3 hours)
       if (stats.nextExportAllowedAt.toMillis() > Date.now() && !isAdmin) {
-        const remaining = Math.ceil((stats.nextExportAllowedAt.toMillis() - Date.now()) / 60000);
-        toast.error(`Aguarde ${remaining}min para exportar novamente.`);
+        const remainingMs = stats.nextExportAllowedAt.toMillis() - Date.now();
+        const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+        toast.error(`Aguarde ${remainingHours}h para exportar novamente.`);
         return;
       }
 
@@ -869,7 +876,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
           userId: user.uid,
           dailyExportCount: stats.dailyExportCount + 1,
           lastMessagesCount: localMsgs.length,
-          nextExportAllowedAt: Timestamp.fromMillis(Date.now() + 5 * 60000),
+          nextExportAllowedAt: Timestamp.fromMillis(Date.now() + 3 * 60 * 60 * 1000),
           lastExportDate: today
         }, { merge: true });
       } catch (err) {
@@ -900,14 +907,13 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
 
     // 1. Cooldown de 3 segundos
     if (now - lastMessageTimeRef.current < 3000) {
-      toast.error("calma aí chefe 🧠", { id: 'spam-warning' });
+      // no-op, just ignore
       return;
     }
 
     // 2. Bloqueio de 30 segundos se rate limit atingido
     if (now < rateLimitedUntilRef.current) {
-      const remaining = Math.ceil((rateLimitedUntilRef.current - now) / 1000);
-      toast.error(`Muitas mensagens! Aguarde mais ${remaining}s 🧠`, { id: 'rate-limit-warning' });
+      // no-op
       return;
     }
 
@@ -919,8 +925,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       requestCountRef.current += 1;
       
       if (requestCountRef.current > 5) {
-        rateLimitedUntilRef.current = now + 30000; // Bloqueio de 30s
-        toast.error("Limite atingido! Bloqueado por 30s 🧠", { duration: 5000 });
+        rateLimitedUntilRef.current = now + 15000; // Bloqueio de 15s (reduzido)
         return;
       }
     }
@@ -983,7 +988,7 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         },
         isHeavy,
         isChatMode,
-        selectedModel
+        'auto'
       );
 
       const aiMsg: Message = {
@@ -1008,8 +1013,9 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isSafetyError = errorMessage.toLowerCase().includes('safety') || errorMessage.toLowerCase().includes('finish_reason_safety');
       const isOverloaded = errorMessage.includes('SISTEMA SOBRECARREGADO');
+      const isOpenRouterDisabled = errorMessage.includes('desativadas');
 
-      if (!isOverloaded) {
+      if (!isOverloaded && !isOpenRouterDisabled) {
         console.error('CRITICAL ERROR in handleSendMessage:', error);
       }
 
@@ -1024,35 +1030,18 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             </p>
           </div>
         );
+      } else if (isOpenRouterDisabled) {
+        toast.error("Integração OpenRouter temporariamente desativada. Use uma chave do Google Gemini.", { duration: 5000 });
       } else {
         const isInvalidKey = errorMessage.toLowerCase().includes('api key') || errorMessage.includes('400') || errorMessage.includes('key not valid');
         
-        toast.error(
-          <div className="flex flex-col gap-2">
-            <p className="font-black text-[10px] uppercase">
-              {isSafetyError ? "CONTEÚDO BLOQUEADO" : (isInvalidKey ? "API KEY INVÁLIDA" : "ERRO AO ENVIAR")}
-            </p>
-            {isInvalidKey && (
-              <p className="text-[9px] leading-tight text-white/80">
-                A API Key que você inseriu parece ser inválida. Verifique nas configurações.
-              </p>
-            )}
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[9px] font-bold">Dúvidas? Staff:</span>
-              <a 
-                href="https://discord.gg/YvRBUyhpZ" 
-                target="_blank" 
-                rel="noreferrer"
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[8px] font-black uppercase transition-all"
-              >
-                Discord
-              </a>
-            </div>
-            {!isInvalidKey && !isSafetyError && (
-              <p className="text-[8px] opacity-50 break-words mt-1">{errorMessage.slice(0, 50)}...</p>
-            )}
-          </div>
-        );
+        if (isSafetyError) {
+           toast.error("CONTEÚDO BLOQUEADO PELO GOOGLE SAFE SEARCH", { duration: 3000 });
+        } else if (isInvalidKey) {
+           toast.error("Sua API Key nas configurações é inválida ou incorreta.", { duration: 3000 });
+        } else {
+           console.warn("Erro ao gerar:", errorMessage);
+        }
       }
     }
   }, [user, currentChatId, apiKey, chats, localChats, selectedModel, userIp]);
@@ -1139,14 +1128,8 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center p-6 text-center overflow-hidden"
+            className="fixed inset-0 z-[9999] bg-[#000000] flex flex-col items-center justify-center p-6 text-center overflow-hidden"
           >
-            <div 
-              className="absolute inset-0 z-0 opacity-20"
-              style={{
-                background: `radial-gradient(circle at 50% 50%, #3b82f6 0%, transparent 70%)`
-              }}
-            />
             
             <div className="relative z-10 space-y-8 max-w-md">
               <motion.div
@@ -1212,18 +1195,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             Modo Offline Ativado • Clique para Tentar Reconectar
           </motion.div>
         )}
-        {isQuotaExceeded && (
-          <motion.div 
-            initial={{ y: -50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -50, opacity: 0 }}
-            className="fixed top-0 left-0 right-0 z-[10000] bg-amber-600 text-white text-[10px] font-black py-1.5 px-4 text-center uppercase tracking-[0.1em] shadow-lg flex flex-col items-center justify-center gap-0 pointer-events-auto cursor-pointer"
-            onClick={() => document.getElementById('settings-btn')?.click()}
-          >
-            <span className="font-bold">⚠️ Banco de dados em sobrecarga (Cota Excedida)</span>
-            <span className="text-[8px] opacity-90 max-w-sm normal-case tracking-normal">A cota do sistema esgotou. Vá em <b>Configurações</b> (ícone de engrenagem) e insira sua própria API Key do Gemini (gratuita) para usar o app localmente enquanto resolvemos.</span>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       <BrowserRouter>
@@ -1240,17 +1211,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
             >
               {/* Theme Color Background Glow */}
               <AnimatePresence>
-                {isGlowEnabled && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.12 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 z-0 pointer-events-none transition-all duration-1000"
-                    style={{
-                      background: `radial-gradient(circle at 50% 120%, var(--accent-primary) 0%, transparent 60%)`
-                    }}
-                  />
-                )}
               </AnimatePresence>
 
               {/* Star Background Layer - Disabled when optimized */}
@@ -1297,32 +1257,19 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
               onExportChat={handleExportChat}
+              appUser={appUser}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 z-10">
               <div className="lg:hidden absolute top-4 left-4 z-40">
                 <button 
                   onClick={() => setIsSidebarOpen(true)}
-                  className="p-2 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/20 transition-all"
+                  className="p-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-black/60 transition-all"
                 >
                   <MessageSquare size={16} />
                 </button>
               </div>
 
-              {user && (
-                <div className="absolute top-4 right-4 z-40">
-                  <button 
-                    onClick={() => setIsNotificationsOpen(true)}
-                    className="p-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-white/10 transition-all relative"
-                    title="Comunicados"
-                  >
-                    <Bell size={16} />
-                    {activeAnnouncementsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#09090b]"></span>
-                    )}
-                  </button>
-                </div>
-              )}
 
               <div 
                 ref={chatContainerRef}
@@ -1347,6 +1294,9 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
                 savedScripts={savedScripts}
                 isBlockMode={isBlockMode}
                 setIsBlockMode={setIsBlockMode}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+                appUser={appUser}
               />
             </main>
 
@@ -1369,12 +1319,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               onSave={executeSaveScript}
               existingScripts={savedScripts}
               defaultName={saveModal.defaultName}
-            />
-
-            <NotificationsModal
-              isOpen={isNotificationsOpen}
-              onClose={() => setIsNotificationsOpen(false)}
-              user={user}
             />
 
             <style>{`

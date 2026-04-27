@@ -12,7 +12,7 @@ import {
   Brain,
   Search
 } from 'lucide-react';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '../firebaseMock';
 import { Message, cn } from '../types';
 import { toast } from 'sonner';
 
@@ -36,14 +36,14 @@ const MessageItem = React.memo(({
     >
       <div className={cn(
         "w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center shrink-0 shadow-lg",
-        msg.role === 'user' ? "bg-white text-black" : "bg-white/20 text-white"
+                msg.role === 'user' ? "bg-black/80 text-white" : "bg-black/40 text-white"
       )}>
         {msg.role === 'user' ? <UserIcon size={14} /> : <Bot size={14} />}
       </div>
       <div className={cn(
-        "max-w-[92%] md:max-w-[85%] p-3 text-xs md:text-sm leading-relaxed break-words shadow-sm backdrop-blur-md ui-border",
+        "max-w-[92%] md:max-w-[85%] p-3 text-xs md:text-sm leading-relaxed break-words shadow-sm backdrop-blur-xl ui-border rounded-xl",
         msg.role === 'user' 
-          ? "bg-white/5 text-white" 
+          ? "bg-black/60 text-white" 
           : "bg-black/40 text-gray-200"
       )}>
         {msg.images && msg.images.length > 0 && (
@@ -71,8 +71,8 @@ const MessageItem = React.memo(({
               const isBlock = !inline && (match || codeContent.includes('\n') || codeContent.length > 50);
 
               return isBlock ? (
-                <div className="relative group my-3 w-full overflow-hidden ui-card !bg-black">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5 ui-border !border-x-0 !border-t-0 !rounded-none">
+                <div className="relative group my-3 w-full overflow-hidden ui-card !bg-black/20 backdrop-blur-xl rounded-xl">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-black/40 border-b border-white/10 ui-border !border-x-0 !border-t-0 !rounded-none">
                     <span className="text-[9px] font-mono text-gray-500 uppercase">{language}</span>
                     <div className="flex items-center gap-1.5">
                       <button 
@@ -94,7 +94,7 @@ const MessageItem = React.memo(({
                           navigator.clipboard.writeText(codeContent);
                           toast.success("Código copiado!");
                         }}
-                        className="p-1 hover:bg-white/10 rounded text-[9px] font-bold text-white transition-all"
+                                                className="p-1 hover:bg-black/40 rounded text-[9px] font-bold text-white transition-all"
                       >
                         COPY
                       </button>
@@ -156,7 +156,7 @@ const LoadingIndicator = ({ isHeavyMode }: { isHeavyMode?: boolean }) => {
       <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg bg-white/20 text-white flex items-center justify-center animate-pulse ui-border !border-transparent">
         {isHeavyMode ? stages[stage].icon : <Bot size={14} />}
       </div>
-      <div className="bg-[#0a0a0a] rounded-xl p-3 flex items-center justify-center min-w-[60px] ui-border">
+      <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-3 flex items-center justify-center min-w-[60px] ui-border">
         {isHeavyMode ? (
            <motion.div
              key={stage}
@@ -201,7 +201,7 @@ const MessageList = React.memo(({
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="p-4 bg-white/10 rounded-full mb-2"
+                     className="p-4 bg-black/20 rounded-full mb-2"
         >
           <img 
             src="/logo.png" 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot, where, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, where, Timestamp, getDocsFromServer } from '../firebaseMock';
 import { Announcement } from '../types';
 
 interface NotificationsModalProps {
@@ -18,21 +18,26 @@ export default function NotificationsModal({ isOpen, onClose, user }: Notificati
     if (!isOpen || !user) return;
 
     // Fetch active announcements
-    const q = query(
-      collection(db, 'announcements'),
-      where('isActive', '==', true),
-      orderBy('createdAt', 'desc')
-    );
+    const fetchAnnouncements = async () => {
+      const q = query(
+        collection(db, 'announcements'),
+        where('isActive', '==', true),
+        orderBy('createdAt', 'desc')
+      );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Announcement[];
-      setAnnouncements(msgs);
-    });
-
-    return () => unsubscribe();
+      try {
+        const snapshot = await getDocsFromServer(q);
+        const msgs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Announcement[];
+        setAnnouncements(msgs);
+      } catch (error) {
+        console.error("Error fetching announcements:", error);
+      }
+    };
+    
+    fetchAnnouncements();
   }, [isOpen, user]);
 
   return (

@@ -22,10 +22,12 @@ import {
   updateDoc, 
   setDoc,
   getDoc,
+  getDocs,
+  limit,
   serverTimestamp,
   orderBy,
   Timestamp
-} from 'firebase/firestore';
+} from '../firebaseMock';
 import { AppUser, AppConfig, OperationType, handleFirestoreError, cn } from '../types';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -65,36 +67,32 @@ export default function ConfigPage() {
   useEffect(() => {
     if (!authChecked) return;
 
-    // Listen to active users
-    const usersQuery = query(collection(db, 'users'), orderBy('lastActive', 'desc'));
-    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-      const userList = snapshot.docs.map(doc => doc.data() as AppUser);
-      setUsers(userList);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users', auth.currentUser);
-    });
+    const fetchData = async () => {
+      try {
+        // Fetch active users once
+        const usersQuery = query(collection(db, 'users'), orderBy('lastActive', 'desc'), limit(50));
+        const usersSnap = await getDocs(usersQuery);
+        setUsers(usersSnap.docs.map(doc => doc.data() as AppUser));
 
-    // Listen to config
-    const configDoc = doc(db, 'config', 'main');
-    const unsubscribeConfig = onSnapshot(configDoc, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as AppConfig;
-        setConfig({ id: snapshot.id, ...data } as AppConfig);
-      } else {
-        setDoc(configDoc, {
-          geminiApiKeys: [],
-          updatedAt: serverTimestamp()
-        }).catch(err => handleFirestoreError(err, OperationType.WRITE, 'config/main', auth.currentUser));
+        // Fetch config once
+        const configDoc = doc(db, 'config', 'main');
+        const configSnap = await getDoc(configDoc);
+        if (configSnap.exists()) {
+          const data = configSnap.data() as AppConfig;
+          setConfig({ id: configSnap.id, ...data } as AppConfig);
+        } else {
+          setDoc(configDoc, {
+            geminiApiKeys: [],
+            updatedAt: serverTimestamp()
+          }).catch(err => handleFirestoreError(err, OperationType.WRITE, 'config/main', auth.currentUser));
+        }
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'config/main or users', auth.currentUser);
+        setLoading(false);
       }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'config/main', auth.currentUser);
-    });
-
-    return () => {
-      unsubscribeUsers();
-      unsubscribeConfig();
     };
+    fetchData();
   }, [authChecked]);
 
   const addApiKey = async () => {
