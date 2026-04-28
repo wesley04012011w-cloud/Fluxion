@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { db } from "./firebase";
 import { doc, getDoc } from "./firebaseMock";
+import { FALLBACK_API_KEYS } from "./apiKeys";
 
 export const geminiModel = "gemini-3.1-pro";
 
@@ -210,6 +211,13 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
     }
   }
 
+  // Combine with hardcoded keys if we don't have enough keys or if we want to distribute load
+  if (!customApiKey) {
+    availableKeys = [...availableKeys, ...FALLBACK_API_KEYS];
+    // Remove duplicates
+    availableKeys = Array.from(new Set(availableKeys));
+  }
+
   if (availableKeys.length === 0) {
     throw new Error("⚠️ SISTEMA SOBRECARREGADO: Insira sua própria API Key do Gemini nas Configurações para continuar usando o app.");
   }
@@ -276,17 +284,25 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
         
         while (true) {
           const nextPromise = iterator.next();
-          // Timeout de 8s para o primeiro chunk ou entre chunks para evitar ficar agarrado pensando
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout de resposta (8s)')), 8000)
-          );
           
-          const result = await Promise.race([nextPromise, timeoutPromise]);
-          if (result.done) break;
+          let timeoutId: any;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Timeout de resposta (60s)')), 60000);
+          });
           
-          const chunkText = result.value.text || '';
-          fullText += chunkText;
-          if (onChunk) onChunk(chunkText);
+          try {
+            const result = await Promise.race([nextPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
+            
+            if (result.done) break;
+            
+            const chunkText = result.value.text || '';
+            fullText += chunkText;
+            if (onChunk) onChunk(chunkText);
+          } catch (error) {
+            clearTimeout(timeoutId);
+            throw error; // Re-throw to be caught by the outer catch
+          }
         }
 
         return fullText; // Success! Return immediately!
@@ -300,10 +316,11 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
             errMsg.includes('429') || errMsg.includes('quota') || 
             errMsg.includes('exhausted') || errMsg.includes('too many') ||
             errMsg.includes('400')) {
-          // Continue to NEXT MODEL in the try_models list for this current API Key
-          continue; 
+          // If the key is exhausted/rate limited, don't try other models with this SAME key.
+          // Break the inner model loop and go to the NEXT API KEY.
+          break; 
         } else {
-          // Unknown error (maybe payload issue), jump to next model anyway
+          // Unknown error (maybe specific model issue), jump to next model
           continue;
         }
       }
