@@ -203,15 +203,21 @@ export default function App() {
 
   useEffect(() => {
     const fetchIpAndCheckBan = async () => {
-      // 1. Check if we already checked this IP recently (last 1 hour)
+      // 1. Check if we already checked this IP recently (last 12 hours)
       const lastCheck = localStorage.getItem('last_ip_ban_check');
       const nowTime = Date.now();
-      if (lastCheck && (nowTime - parseInt(lastCheck)) < 3600000) { // 1 hour
+      const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+      
+      if (lastCheck && (nowTime - parseInt(lastCheck)) < TWELVE_HOURS) {
         const cachedBan = localStorage.getItem('is_ip_banned');
+        const cachedIp = localStorage.getItem('last_user_ip');
+        if (cachedIp) setUserIp(cachedIp);
         if (cachedBan === 'true') {
           setIsIpBanned(true);
           return;
         }
+        console.log("🕒 Status: IP verificado recentemente (Cache 12h)");
+        return;
       }
 
       let ip: string | null = null;
@@ -710,18 +716,35 @@ export default function App() {
 
     const fetchMessages = async () => {
       try {
+        // 1. Tentar carregar do banco local primeiro para exibição instantânea
+        const localMsgs = await localChatService.getMessages(currentChatId);
+        if (localMsgs.length > 0) {
+          setMessages(localMsgs);
+          
+          // Verificar se buscamos recentemente (nos últimos 15 min) para este chat nesta sessão
+          const lastFetched = sessionStorage.getItem(`last_fetch_msgs_${currentChatId}`);
+          const canSkip = lastFetched && (Date.now() - parseInt(lastFetched)) < 15 * 60 * 1000;
+          
+          if (canSkip) {
+            console.log(`📦 Cache: Usando mensagens locais para ${currentChatId} (Skip Firebase)`);
+            return;
+          }
+        }
+
+        console.log(`🔥 [FIREBASE READ] Buscando mensagens na nuvem para: ${currentChatId}`);
         const q = query(
           collection(db, `chats/${currentChatId}/messages`),
-          orderBy('createdAt', 'desc'), // Fetch latest first
+          orderBy('createdAt', 'desc'),
           limit(60)
         );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
-          // Reverse because we want oldest first in the UI
           const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
           setMessages(msgList);
           // Sincroniza com local para visualização offline
           await localChatService.saveMessages(currentChatId, msgList);
+          // Marca o tempo da última busca
+          sessionStorage.setItem(`last_fetch_msgs_${currentChatId}`, Date.now().toString());
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);

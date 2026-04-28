@@ -393,13 +393,9 @@ export default function AdminPage() {
     setIsLoadingChat(true);
     try {
       const q = query(collection(db, `chats/${chatId}/messages`), orderBy('createdAt', 'asc'));
-      const unsub = onSnapshot(q, (snapshot) => {
-        setViewingChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setIsLoadingChat(false);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, `chats/${chatId}/messages`, user);
-      });
-      // Not storing unsub for now, simple view
+      const snap = await getDocs(q);
+      setViewingChatMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setIsLoadingChat(false);
     } catch (e: any) {
       alert('❌ Erro ao abrir chat: ' + e.message);
       setIsLoadingChat(false);
