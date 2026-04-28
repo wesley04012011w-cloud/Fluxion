@@ -334,7 +334,7 @@ export default function App() {
     };
     checkRedirect();
 
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       console.log("Auth state changed:", u ? u.email : "deslogado");
       setUser(u);
       setAuthLoaded(true);
@@ -350,15 +350,21 @@ export default function App() {
           try {
             const scripts = JSON.parse(offlineScripts);
             if (Array.isArray(scripts) && scripts.length > 0) {
-              scripts.forEach(async (script: any) => {
-                await addDoc(collection(db, 'scripts'), {
-                  userId: u.uid,
-                  name: script.name,
-                  content: script.content,
-                  createdAt: serverTimestamp()
-                });
-              });
+              // Sincronizar sequencialmente para garantir que o cache local só seja limpo após sucesso
+              for (const script of scripts) {
+                try {
+                  await addDoc(collection(db, 'scripts'), {
+                    userId: u.uid,
+                    name: script.name,
+                    content: script.content,
+                    createdAt: serverTimestamp()
+                  });
+                } catch (e) {
+                  console.warn("Falha ao migrar script individual:", script.name);
+                }
+              }
               localStorage.removeItem('saved_scripts_offline');
+              console.log("✅ Migração de scripts offline concluída.");
             }
           } catch (e) {
             console.error("Migration failed:", e);
@@ -381,11 +387,13 @@ export default function App() {
   // Presença e Monitoramento
   const [userStatus, setUserStatus] = useState<{ banned: boolean; blockedUntil?: Timestamp } | null>(null);
 
+  const syncChatsRan = useRef(false);
+  const fetchScriptsRan = useRef(false);
+  const fetchAppUserRan = useRef(false);
+  const checkIpRan = useRef(false);
+
   useEffect(() => {
-    if (!user) {
-      setAppUser(null);
-      return;
-    }
+    if (!user || fetchAppUserRan.current) return;
     const fetchAppUser = async () => {
        try {
          const rehydrateAppUser = (data: any): AppUser => {
@@ -395,17 +403,24 @@ export default function App() {
             return data as AppUser;
          };
 
+         // Cache por 1 hora para o perfil do usuário
+         const lastFetch = sessionStorage.getItem(`last_fetch_appuser_${user.uid}`);
          const cached = sessionStorage.getItem(`appUser_${user.uid}`);
-         if (cached) {
-           setAppUser(rehydrateAppUser(JSON.parse(cached)));
-           return;
+         
+         if (cached && lastFetch && (Date.now() - parseInt(lastFetch)) < 3600000) {
+            setAppUser(rehydrateAppUser(JSON.parse(cached)));
+            fetchAppUserRan.current = true;
+            return;
          }
          
+         console.log("🔥 [FIREBASE READ] Buscando perfil do usuário...");
          const userDoc = await getDoc(doc(db, 'users', user.uid));
          if (userDoc.exists()) {
            const data = userDoc.data() as AppUser;
            setAppUser(data);
            sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(data));
+           sessionStorage.setItem(`last_fetch_appuser_${user.uid}`, Date.now().toString());
+           fetchAppUserRan.current = true;
          }
        } catch (e: any) {
           console.error("Error fetching app user", e);
@@ -563,7 +578,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || syncChatsRan.current) return;
     const syncChats = async () => {
       try {
         const lastSync = localStorage.getItem(`last_chat_sync_${user.uid}`);
@@ -579,6 +594,7 @@ export default function App() {
         // 2. Se já sincronizou nas últimas 24h e temos dados locais, não lê do Firebase
         if (lastSync && (now - parseInt(lastSync)) < oneDay && local.length > 0) {
           console.log("☁️ Sincronização em dia. Usando dados locais.");
+          syncChatsRan.current = true;
           return;
         }
 
@@ -672,23 +688,34 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) {
-      const offline = localStorage.getItem('saved_scripts_offline');
-      if (offline) setSavedScripts(JSON.parse(offline));
+    if (!user || fetchScriptsRan.current) {
+      if (!user) {
+        const offline = localStorage.getItem('saved_scripts_offline');
+        if (offline) setSavedScripts(JSON.parse(offline));
+      }
       return;
     }
     const fetchScripts = async () => {
       try {
+        const lastSync = localStorage.getItem(`last_script_sync_${user.uid}`);
+        const now = Date.now();
+        const twelveHours = 12 * 60 * 60 * 1000;
+
         const cached = sessionStorage.getItem(`scripts_${user.uid}`);
         if (cached) {
           setSavedScripts(JSON.parse(cached));
+          if (lastSync && (now - parseInt(lastSync)) < twelveHours) {
+            fetchScriptsRan.current = true;
+            return;
+          }
         }
 
+        console.log("🔥 [FIREBASE READ] Sincronizando scripts (Ciclo 12h)...");
         const q = query(
           collection(db, 'scripts'),
           where('userId', '==', user.uid),
           orderBy('createdAt', 'desc'),
-          limit(20) // Limit to last 20 scripts
+          limit(20)
         );
         const snapshot = await getDocs(q);
         const scriptsList = snapshot.docs.map(doc => ({ 
@@ -699,6 +726,8 @@ export default function App() {
         setSavedScripts(scriptsList);
         sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scriptsList));
         localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
+        localStorage.setItem(`last_script_sync_${user.uid}`, now.toString());
+        fetchScriptsRan.current = true;
       } catch (error) {
         const cached = localStorage.getItem('saved_scripts_offline');
         if (cached) setSavedScripts(JSON.parse(cached));

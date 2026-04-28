@@ -145,6 +145,19 @@ export default function SettingsPage() {
 
     const fetchScripts = async () => {
       try {
+        const lastSync = localStorage.getItem(`last_script_sync_${user.uid}`);
+        const now = Date.now();
+        const twelveHours = 12 * 60 * 60 * 1000;
+
+        const cached = sessionStorage.getItem(`scripts_${user.uid}`);
+        if (cached) {
+          setSavedScripts(JSON.parse(cached));
+          if (lastSync && (now - parseInt(lastSync)) < twelveHours) {
+            setScriptsLoading(false);
+            return;
+          }
+        }
+
         const q = query(
           collection(db, 'scripts'),
           where('userId', '==', user.uid),
@@ -157,6 +170,8 @@ export default function SettingsPage() {
           content: doc.data().content 
         }));
         setSavedScripts(scripts);
+        sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scripts));
+        localStorage.setItem(`last_script_sync_${user.uid}`, now.toString());
         setScriptsLoading(false);
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, 'scripts', user);

@@ -12,13 +12,14 @@ import {
   sendPasswordResetEmail,
   signOut as firebaseSignOut
 } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+import { handleFirestoreError } from './types'; // Correcting import if needed or just use catch
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Ensure local persistence
+// Ensure local persistence for Auth
 const persistencePromise = setPersistence(auth, browserLocalPersistence).catch(err => {
   console.error("Persistence error:", err);
   return null;
@@ -27,6 +28,15 @@ const persistencePromise = setPersistence(auth, browserLocalPersistence).catch(e
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
+
+// Enable Firestore Offline Persistence
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn("Firestore Persistence: Múltiplas abas abertas, persistência ativa em apenas uma.");
+    } else if (err.code === 'unimplemented') {
+        console.warn("Firestore Persistence: Navegador sem suporte a persistência.");
+    }
+});
 
 // async function testConnection() {
 //   try {
