@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, orderBy, where, Timestamp, getDocsFromServer } from '../firebaseMock';
+import { collection, query, orderBy, where, Timestamp, getDocsFromServer } from 'firebase/firestore';
 import { Announcement } from '../types';
 
 interface NotificationsModalProps {
@@ -19,10 +19,22 @@ export default function NotificationsModal({ isOpen, onClose, user }: Notificati
 
     // Fetch active announcements
     const fetchAnnouncements = async () => {
+      // Check cache first
+      const cached = sessionStorage.getItem('active_announcements_data');
+      if (cached) {
+        try {
+          setAnnouncements(JSON.parse(cached));
+          return;
+        } catch (e) {
+          console.warn("Error parsing cached announcements");
+        }
+      }
+
       const q = query(
         collection(db, 'announcements'),
         where('isActive', '==', true),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(5)
       );
 
       try {

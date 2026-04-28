@@ -34,7 +34,7 @@ import {
   addDoc, 
   getDocs,
   serverTimestamp 
-} from '../firebaseMock';
+} from 'firebase/firestore';
 
 const MODELS = [
   { id: 'auto', name: 'Automático (Fallback)', desc: 'Troca se houver erro ou cota cheia' },

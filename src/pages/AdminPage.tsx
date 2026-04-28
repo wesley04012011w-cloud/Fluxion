@@ -9,6 +9,7 @@ import {
   Activity,
   Save,
   MessageSquare,
+  Plus,
   X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -33,7 +34,7 @@ import {
   where,
   getDocs,
   getDocFromServer
-} from '../firebaseMock';
+} from 'firebase/firestore';
 
 const ADMIN_EMAILS = ["wesley04012011w@gmail.com", "soparonosk37@gmail.com"];
 
@@ -132,7 +133,7 @@ export default function AdminPage() {
   const fetchLogsAndIps = async () => {
     try {
       toast.info('Buscando dados. Isso pode custar cota de leituras...', { duration: 2000, id: 'fetch-logs' });
-      const bannedSnap = await getDocs(collection(db, 'banned_ips'));
+      const bannedSnap = await getDocs(query(collection(db, 'banned_ips'), limit(200)));
       setBannedIps(bannedSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       const accSnap = await getDocs(query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)));
@@ -797,21 +798,40 @@ export default function AdminPage() {
                  </div>
                  
                  <div className="pt-2">
-                    <input 
-                       id="newGeminiKey"
-                       type="password"
-                       placeholder="Nova chave (Salva apenas local)..."
-                       className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono mb-2"
-                       onKeyDown={(e) => {
-                         if (e.key === 'Enter') {
-                           const el = e.currentTarget;
-                           const val = el.value.trim();
-                           if (!val) return;
-                           addLocalKey(val);
-                           el.value = '';
-                         }
-                       }}
-                    />
+                     <div className="flex gap-2 mb-2">
+                       <input 
+                          id="newGeminiKey"
+                          type="password"
+                          placeholder="Nova chave (Salva apenas local)..."
+                          className="flex-1 bg-black/40 border border-white/5 rounded-xl py-2 px-3 text-[10px] text-white focus:outline-none focus:border-blue-500/30 font-mono"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const el = e.currentTarget;
+                              const val = el.value.trim();
+                              if (!val) return;
+                              addLocalKey(val);
+                              el.value = '';
+                            }
+                          }}
+                       />
+                       <button
+                         onClick={() => {
+                           const bulk = prompt("Cole múltiplas chaves (uma por linha ou separadas por vírgula):");
+                           if (!bulk) return;
+                           const keys = bulk.split(/[\n,]/).map(k => k.trim()).filter(k => k.length > 5);
+                           if (keys.length > 0) {
+                             const newKeys = Array.from(new Set([...localGeminiKeys, ...keys]));
+                             setLocalGeminiKeys(newKeys);
+                             localStorage.setItem('local_gemini_keys', JSON.stringify(newKeys));
+                             toast.success(`${keys.length} chaves adicionadas localmente!`);
+                           }
+                         }}
+                         className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                         title="Adicionar em Massa"
+                       >
+                         <Plus size={14} className="text-gray-400" />
+                       </button>
+                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <p className="text-[8px] text-gray-600 italic">Enter para salvar no navegador.</p>
                       <button 

@@ -12,7 +12,7 @@ import {
   Brain,
   Search
 } from 'lucide-react';
-import { Timestamp } from '../firebaseMock';
+import { Timestamp } from 'firebase/firestore';
 import { Message, cn } from '../types';
 import { toast } from 'sonner';
 

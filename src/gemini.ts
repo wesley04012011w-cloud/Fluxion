@@ -1,7 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { db } from "./firebase";
-import { doc, getDoc } from "./firebaseMock";
-import { FALLBACK_API_KEYS } from "./apiKeys";
+import { doc, getDoc } from "firebase/firestore";
 
 export const geminiModel = "gemini-3.1-pro";
 
@@ -211,34 +210,31 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
     }
   }
 
-  // Combine with hardcoded keys if we don't have enough keys or if we want to distribute load
-  if (!customApiKey) {
-    availableKeys = [...availableKeys, ...FALLBACK_API_KEYS];
-    // Remove duplicates
-    availableKeys = Array.from(new Set(availableKeys));
-  }
-
+  // Se não houver chaves no localStorage, o sistema vai pedir uma chave manual.
+  // As chaves globais são puxadas do banco pelo App.tsx uma vez a cada 24h.
   if (availableKeys.length === 0) {
-    throw new Error("⚠️ SISTEMA SOBRECARREGADO: Insira sua própria API Key do Gemini nas Configurações para continuar usando o app.");
+    throw new Error("⚠️ SISTEMA SOBRECARREGADO: O banco de chaves está vazio. Tente novamente mais tarde ou use sua própria API Key.");
   }
 
   // Determine key order 
   const prioritizedKeys = [...availableKeys].sort(() => Math.random() - 0.5);
 
   let lastError: any = null;
-  // Fallback chain: Primary reasoning model, fallback to stable generation model, fallback to fast model
+  // Fallback chain based on Gemini 3 series and stable flash
   const modelsToTry = [
-    "gemini-2.5-pro",
     "gemini-3.1-pro-preview",
-    "gemini-3.0-flash"
+    "gemini-3-flash-preview",
+    "gemini-flash-latest"
   ];
 
   for (const apiKey of prioritizedKeys) {
+    if (!apiKey) continue;
     const aiInstance = new GoogleGenAI({ apiKey });
     
     for (const currentModel of modelsToTry) {
       try {
-        const prunedMessages = messages.length > 10 ? messages.slice(-10) : messages;
+        // Aumentado para 20 mensagens para manter mais contexto em scripts complexos
+        const prunedMessages = messages.length > 20 ? messages.slice(-20) : messages;
         
         const contents = prunedMessages.map(m => {
           const parts: any[] = [{ text: m.content }];
@@ -267,10 +263,16 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
           };
         });
 
+        // Standard Gemini configuration
         const config: any = {
           systemInstruction: finalInstruction,
           temperature: 0.7,
         };
+
+        // Enable reasoning/thinking for Pro/Preview models if available
+        if (currentModel.includes('pro') || currentModel.includes('preview')) {
+          config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW }; // Low to minimize latency while still thinking
+        }
 
         const stream = await aiInstance.models.generateContentStream({
           model: currentModel,
@@ -279,6 +281,7 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
         });
 
         let fullText = "";
+        let chunksCount = 0;
         // Usa o async iterator manualmente para conseguirmos aplicar timeout no next()
         const iterator = stream[Symbol.asyncIterator]();
         
@@ -297,12 +300,20 @@ IMPORTANTE: As regras de segurança aplicam-se aqui também. RECUSE FORTEMENTE e
             if (result.done) break;
             
             const chunkText = result.value.text || '';
-            fullText += chunkText;
-            if (onChunk) onChunk(chunkText);
+            if (chunkText) {
+              fullText += chunkText;
+              chunksCount++;
+              if (onChunk) onChunk(chunkText);
+            }
           } catch (error) {
             clearTimeout(timeoutId);
             throw error; // Re-throw to be caught by the outer catch
           }
+        }
+
+        if (!fullText || chunksCount === 0) {
+          console.warn(`Model ${currentModel} returned empty response. Trying next model...`);
+          continue;
         }
 
         return fullText; // Success! Return immediately!

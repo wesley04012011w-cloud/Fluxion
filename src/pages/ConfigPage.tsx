@@ -27,7 +27,7 @@ import {
   serverTimestamp,
   orderBy,
   Timestamp
-} from '../firebaseMock';
+} from 'firebase/firestore';
 import { AppUser, AppConfig, OperationType, handleFirestoreError, cn } from '../types';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';

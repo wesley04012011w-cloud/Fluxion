@@ -24,7 +24,9 @@ const persistencePromise = setPersistence(auth, browserLocalPersistence).catch(e
   return null;
 });
 
-export const db = {} as any;
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId);
 
 // async function testConnection() {
 //   try {

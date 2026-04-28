@@ -91,7 +91,22 @@ export const localChatService = {
   },
 
   async saveChat(chat: Chat) {
+    // Marcar como pendente de sincronização se for novo ou atualizado
+    (chat as any).needsSync = true;
     await localDB.put(CHATS_STORE, chat);
+  },
+
+  async markChatSynced(chatId: string) {
+    const chat = await localDB.get<Chat>(CHATS_STORE, chatId);
+    if (chat) {
+      (chat as any).needsSync = false;
+      await localDB.put(CHATS_STORE, chat);
+    }
+  },
+
+  async getUnsyncedChats(): Promise<Chat[]> {
+    const all = await localDB.getAll<Chat>(CHATS_STORE);
+    return all.filter(c => (c as any).needsSync);
   },
 
   async deleteChat(chatId: string) {
@@ -105,14 +120,29 @@ export const localChatService = {
   },
 
   async saveMessages(chatId: string, messages: Message[]) {
-    await localDB.put(MESSAGES_STORE, { chatId, messages });
+    // Marcar que este set de mensagens precisa ser sincronizado
+    await localDB.put(MESSAGES_STORE, { chatId, messages, needsSync: true });
     
-    // Update metadata locally to keep UI consistent
+    // Update metadata locally
     const chat = await localDB.get<Chat>(CHATS_STORE, chatId);
     if (chat) {
       chat.updatedAt = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any;
+      (chat as any).needsSync = true;
       await localDB.put(CHATS_STORE, chat);
     }
+  },
+
+  async markMessagesSynced(chatId: string) {
+    const data = await localDB.get<{ chatId: string, messages: Message[], needsSync: boolean }>(MESSAGES_STORE, chatId);
+    if (data) {
+      data.needsSync = false;
+      await localDB.put(MESSAGES_STORE, data);
+    }
+  },
+
+  async getUnsyncedMessages(): Promise<{ chatId: string, messages: Message[] }[]> {
+    const all = await localDB.getAll<{ chatId: string, messages: Message[], needsSync: boolean }>(MESSAGES_STORE);
+    return all.filter(m => m.needsSync);
   },
 
   async addMessage(chatId: string, message: Message) {

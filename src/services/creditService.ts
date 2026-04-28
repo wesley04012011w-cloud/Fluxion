@@ -1,4 +1,4 @@
-import { Timestamp } from '../firebaseMock';
+import { Timestamp } from 'firebase/firestore';
 import { AppUser } from '../types';
 
 const custos: { [key: string]: number } = {

@@ -26,7 +26,7 @@ import {
   getDoc,
   getDocFromServer,
   getDocs
-} from './firebaseMock';
+} from 'firebase/firestore';
 import { getGeminiResponse, geminiModel } from './gemini';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import Sidebar from './components/Sidebar';
@@ -178,10 +178,24 @@ export default function App() {
     // Monitor Maintenance Mode from System Config (Single load to save quota)
     const fetchConfig = async () => {
       try {
-        const snap = await getDocFromServer(doc(db, 'config', 'main'));
-        if (snap.exists()) {
-          const data = snap.data();
-          setMaintenanceMode(data.maintenanceMode || false);
+        // Optimize: Only fetch once every 24 hours or if we have no local keys
+        const lastFetch = localStorage.getItem('last_config_fetch');
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+        
+        if (!lastFetch || (now - parseInt(lastFetch)) > oneDay || !localStorage.getItem('local_gemini_keys')) {
+          const snap = await getDocFromServer(doc(db, 'config', 'main'));
+          if (snap.exists()) {
+            const data = snap.data();
+            setMaintenanceMode(data.maintenanceMode || false);
+            
+            // Distributed API Keys System
+            if (data.geminiApiKeys && Array.isArray(data.geminiApiKeys)) {
+              localStorage.setItem('local_gemini_keys', JSON.stringify(data.geminiApiKeys));
+            }
+            
+            localStorage.setItem('last_config_fetch', now.toString());
+          }
         }
       } catch (error) {
         console.warn("Could not fetch maintenance status (offline/quota):", error);
@@ -218,6 +232,17 @@ export default function App() {
 
   useEffect(() => {
     const fetchIpAndCheckBan = async () => {
+      // 1. Check if we already checked this IP recently (last 1 hour)
+      const lastCheck = localStorage.getItem('last_ip_ban_check');
+      const nowTime = Date.now();
+      if (lastCheck && (nowTime - parseInt(lastCheck)) < 3600000) { // 1 hour
+        const cachedBan = localStorage.getItem('is_ip_banned');
+        if (cachedBan === 'true') {
+          setIsIpBanned(true);
+          return;
+        }
+      }
+
       let ip: string | null = null;
       const services = [
         'https://api.ipify.org?format=json',
@@ -260,12 +285,15 @@ export default function App() {
       
       try {
         const snapshot = await getDoc(ipDocRef);
-        if (snapshot.exists()) {
-          setIsIpBanned(true);
+        const isBanned = snapshot.exists();
+        setIsIpBanned(isBanned);
+        localStorage.setItem('is_ip_banned', String(isBanned));
+        localStorage.setItem('last_ip_ban_check', Date.now().toString());
+
+        if (isBanned) {
           console.log("🚫 Status: IP Banido", ip);
           toast.error("ACESSO NEGADO: Seu endereço IP está na lista negra.", { duration: Infinity });
         } else {
-          setIsIpBanned(false);
           console.log("✅ Status: IP Limpo", ip);
         }
       } catch (error) {
@@ -437,9 +465,10 @@ export default function App() {
       // Evitar logs se já estivermos detectados como bloqueados
       if (isIpBanned) return; 
 
-      // Evitar atualizar se já atualizamos recentemente (e.g., nos últimos 15 minutos)
+      // Evitar atualizar se já atualizamos recentemente (e.g., nos últimos 12 horas)
       const lastUpdate = localStorage.getItem('last_presence_update');
-      if (lastUpdate && Date.now() - parseInt(lastUpdate) < 15 * 60 * 1000) return;
+      const twelveHours = 12 * 60 * 60 * 1000;
+      if (lastUpdate && Date.now() - parseInt(lastUpdate) < twelveHours) return;
 
       try {
         let currentIp = userIp || localStorage.getItem('last_user_ip');
@@ -530,9 +559,25 @@ export default function App() {
     if (!user) return;
     const fetchAnnouncements = async () => {
       try {
-        const qAnnouncements = query(collection(db, 'announcements'), where('isActive', '==', true));
+        // Cache announcements in sessionStorage for the duration of the session
+        const cached = sessionStorage.getItem('active_announcements_count');
+        if (cached) {
+          setActiveAnnouncementsCount(parseInt(cached));
+          return;
+        }
+
+        const qAnnouncements = query(
+          collection(db, 'announcements'), 
+          where('isActive', '==', true),
+          limit(5)
+        );
         const snapshot = await getDocs(qAnnouncements);
-        setActiveAnnouncementsCount(snapshot.size);
+        const count = snapshot.size;
+        setActiveAnnouncementsCount(count);
+        
+        const announcementsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        sessionStorage.setItem('active_announcements_data', JSON.stringify(announcementsData));
+        sessionStorage.setItem('active_announcements_count', count.toString());
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, 'announcements', user);
       }
@@ -542,36 +587,131 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const fetchChats = async () => {
+    const syncChats = async () => {
       try {
+        const lastSync = localStorage.getItem(`last_chat_sync_${user.uid}`);
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+
+        // 1. Tenta carregar do IndexedDB primeiro (Imediato)
+        const local = await localChatService.getChats();
+        if (local.length > 0) {
+          setLocalChats(local);
+        }
+
+        // 2. Se já sincronizou nas últimas 24h e temos dados locais, não lê do Firebase
+        if (lastSync && (now - parseInt(lastSync)) < oneDay && local.length > 0) {
+          console.log("☁️ Sincronização em dia. Usando dados locais.");
+          return;
+        }
+
+        console.log("☁️ Sincronizando chats e mensagens com Firebase (Ciclo 24h)...");
+        
+        // 3. Sincronizar envios pendentes (Local -> Firebase)
+        const unsynced = await localChatService.getUnsyncedChats();
+        const unsyncedMsgs = await localChatService.getUnsyncedMessages();
+
+        // Sync Chats
+        for (const chat of unsynced) {
+          try {
+            const isLocalId = chat.id.startsWith('local_');
+            const chatRef = isLocalId ? doc(collection(db, 'chats')) : doc(db, 'chats', chat.id);
+            
+            const firebaseData = { ...chat };
+            if (isLocalId) {
+              const oldId = chat.id;
+              delete (firebaseData as any).id;
+              firebaseData.userId = user.uid;
+              await setDoc(chatRef, firebaseData);
+              
+              // Migrar mensagens do ID local para o novo ID do Firebase
+              const msgs = await localChatService.getMessages(oldId);
+              await localChatService.deleteChat(oldId);
+              await localChatService.saveChat({ ...firebaseData, id: chatRef.id } as Chat);
+              await localChatService.saveMessages(chatRef.id, msgs);
+              await localChatService.markChatSynced(chatRef.id);
+
+              // Atualizar ID atual se estivermos nele
+              if (currentChatId === oldId) setCurrentChatId(chatRef.id);
+            } else {
+              await setDoc(chatRef, firebaseData, { merge: true });
+              await localChatService.markChatSynced(chat.id);
+            }
+          } catch (e) {
+            console.warn("Falha ao sincronizar chat:", chat.id);
+          }
+        }
+
+        // Sync Messages
+        for (const mGroup of unsyncedMsgs) {
+          try {
+            if (mGroup.chatId.startsWith('local_')) continue; // Já tratado na migração de chat acima
+
+            // Batch update no Firebase (simulado via loop para simplicidade ou use writeBatch)
+            // Para economizar, enviamos todas as mensagens do chat de uma vez para uma subcoleção
+            const messagesRef = collection(db, `chats/${mGroup.chatId}/messages`);
+            
+            // Estratégia de economia: só enviamos as mensagens novas
+            // Aqui vamos simplificar enviando as que não existem no banco
+            // Mas para seguir o pedido de "enviado a cada 24h", vamos sobrescrever 
+            // ou adicionar apenas as últimas.
+            for (const msg of mGroup.messages) {
+              await setDoc(doc(messagesRef, msg.id), msg, { merge: true });
+            }
+            await localChatService.markMessagesSynced(mGroup.chatId);
+          } catch (e) {
+            console.warn("Falha ao sincronizar mensagens:", mGroup.chatId);
+          }
+        }
+
+        // 4. Puxar do Firebase para Local (Firebase -> Local)
         const q = query(
           collection(db, 'chats'),
           where('userId', '==', user.uid),
-          orderBy('updatedAt', 'desc')
+          orderBy('updatedAt', 'desc'),
+          limit(30)
         );
         const snapshot = await getDocs(q);
-        const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
-        setChats(chatList);
+        const firebaseChats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
+        
+        // Atualizar local com dados do servidor
+        for (const fChat of firebaseChats) {
+          const localMatch = local.find(l => l.id === fChat.id);
+          if (!localMatch || (fChat.updatedAt as any).seconds > (localMatch.updatedAt as any).seconds) {
+             await localChatService.saveChat(fChat);
+             await localChatService.markChatSynced(fChat.id);
+          }
+        }
+
+        const finalLocal = await localChatService.getChats();
+        setLocalChats(finalLocal);
+        localStorage.setItem(`last_chat_sync_${user.uid}`, now.toString());
+        sessionStorage.setItem(`chats_${user.uid}`, JSON.stringify(finalLocal));
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'chats', user);
+        console.error("Erro na sincronização de chats:", error);
       }
     };
-    fetchChats();
+    syncChats();
   }, [user]);
 
   useEffect(() => {
     if (!user) {
-      // Load offline scripts if not logged in
       const offline = localStorage.getItem('saved_scripts_offline');
       if (offline) setSavedScripts(JSON.parse(offline));
       return;
     }
     const fetchScripts = async () => {
       try {
+        const cached = sessionStorage.getItem(`scripts_${user.uid}`);
+        if (cached) {
+          setSavedScripts(JSON.parse(cached));
+        }
+
         const q = query(
           collection(db, 'scripts'),
           where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(20) // Limit to last 20 scripts
         );
         const snapshot = await getDocs(q);
         const scriptsList = snapshot.docs.map(doc => ({ 
@@ -580,10 +720,9 @@ export default function App() {
           content: doc.data().content 
         }));
         setSavedScripts(scriptsList);
-        // Cache scripts for offline viewing/copying
+        sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scriptsList));
         localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
       } catch (error) {
-        // On error (like offline), try to load from cache
         const cached = localStorage.getItem('saved_scripts_offline');
         if (cached) setSavedScripts(JSON.parse(cached));
         handleFirestoreError(error, OperationType.LIST, 'scripts', user);
@@ -602,11 +741,13 @@ export default function App() {
       try {
         const q = query(
           collection(db, `chats/${currentChatId}/messages`),
-          orderBy('createdAt', 'asc')
+          orderBy('createdAt', 'desc'), // Fetch latest first
+          limit(60)
         );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
-          const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+          // Reverse because we want oldest first in the UI
+          const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
           setMessages(msgList);
           // Sincroniza com local para visualização offline
           await localChatService.saveMessages(currentChatId, msgList);
@@ -1026,21 +1167,28 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
               SISTEMA SOBRECARREGADO
             </p>
             <p className="text-[10px] leading-tight">
-              Vá em <b>Configurações</b> (ícone de engrenagem) e insira sua própria API Key do Gemini (gratuita) para continuar usando localmente.
+              O tráfego global está muito alto. Tente novamente em alguns segundos ou use sua própria API Key nas Configurações.
             </p>
           </div>
         );
       } else if (isOpenRouterDisabled) {
         toast.error("Integração OpenRouter temporariamente desativada. Use uma chave do Google Gemini.", { duration: 5000 });
       } else {
-        const isInvalidKey = errorMessage.toLowerCase().includes('api key') || errorMessage.includes('400') || errorMessage.includes('key not valid');
+        const isInvalidKey = errorMessage.toLowerCase().includes('api key') || 
+                             errorMessage.includes('400') || 
+                             errorMessage.includes('key not valid') ||
+                             errorMessage.includes('invalid api key');
         
         if (isSafetyError) {
            toast.error("CONTEÚDO BLOQUEADO PELO GOOGLE SAFE SEARCH", { duration: 3000 });
         } else if (isInvalidKey) {
-           toast.error("Sua API Key nas configurações é inválida ou incorreta.", { duration: 3000 });
+           toast.error("Erro na API Key. Verifique se ela é válida nas configurações.", { duration: 3000 });
         } else {
            console.warn("Erro ao gerar:", errorMessage);
+           // Show generic error toast if it's not a common one and seems permanent
+           if (errorMessage.length > 5 && !errorMessage.includes('Timeout')) {
+             toast.error(`Erro: ${errorMessage.slice(0, 50)}...`, { duration: 4000 });
+           }
         }
       }
     }

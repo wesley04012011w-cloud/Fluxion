@@ -1,5 +1,5 @@
 import React from 'react';
-import { Timestamp } from './firebaseMock';
+import { Timestamp } from 'firebase/firestore';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'sonner';
