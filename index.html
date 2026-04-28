@@ -1,22 +1,111 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Fluxion AI Studio</title>
-    <meta name="theme-color" content="#0F111A" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <meta name="description" content="Fluxion AI Studio - O ambiente definitivo para scripts Luau e Roblox." />
-    <meta property="og:title" content="Fluxion AI Studio" />
-    <meta property="og:description" content="Especialista em scripts Luau para Roblox." />
-    <meta property="og:image" content="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projeto Encerrado</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #0a0a0a;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        text-align: center;
+        overflow: hidden;
+      }
+      .container {
+        max-width: 500px;
+        padding: 2rem;
+        position: relative;
+      }
+      .bg-glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 300px;
+        height: 300px;
+        background: rgba(79, 70, 229, 0.15);
+        filter: blur(80px);
+        border-radius: 50%;
+        z-index: -1;
+      }
+      .icon {
+        margin-bottom: 2rem;
+        display: inline-block;
+        padding: 1.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        backdrop-filter: blur(10px);
+      }
+      h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        background: linear-gradient(to bottom, #ffffff, #a1a1aa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      p {
+        color: #a1a1aa;
+        font-size: 1.125rem;
+        line-height: 1.6;
+        margin-bottom: 2.5rem;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        background-color: #4f46e5;
+        color: white;
+        text-decoration: none;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        font-weight: 600;
+        transition: all 0.2s;
+        box-shadow: 0 0 20px rgba(79, 70, 229, 0.3);
+      }
+      .button:hover {
+        background-color: #4338ca;
+        box-shadow: 0 0 30px rgba(79, 70, 229, 0.5);
+        transform: translateY(-2px);
+      }
+      .footer {
+        margin-top: 4rem;
+        font-size: 0.75rem;
+        color: #3f3f46;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div class="container">
+      <div class="bg-glow"></div>
+      
+      <div class="icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+
+      <h1>Projeto Encerrado</h1>
+      <p>
+        Projeto fechado por tempo indeterminado. Um novo app será lançado, por favor fique no aguardo.
+      </p>
+
+      <a href="https://discord.gg/tcQUNYx2m" target="_blank" class="button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>
+        Entrar no Discord
+      </a>
+
+      <div class="footer">
+        Fique atento atualizações • 2024
+      </div>
+    </div>
   </body>
 </html>
-
