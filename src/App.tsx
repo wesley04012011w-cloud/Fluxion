@@ -387,13 +387,14 @@ export default function App() {
   // Presença e Monitoramento
   const [userStatus, setUserStatus] = useState<{ banned: boolean; blockedUntil?: Timestamp } | null>(null);
 
-  const syncChatsRan = useRef(false);
-  const fetchScriptsRan = useRef(false);
-  const fetchAppUserRan = useRef(false);
+  const syncChatsRan = useRef<string | null>(null);
+  const fetchScriptsRan = useRef<string | null>(null);
+  const fetchAppUserRan = useRef<string | null>(null);
   const checkIpRan = useRef(false);
+  const fetchAnnouncementsRan = useRef(false);
 
   useEffect(() => {
-    if (!user || fetchAppUserRan.current) return;
+    if (!user || fetchAppUserRan.current === user.uid) return;
     const fetchAppUser = async () => {
        try {
          const rehydrateAppUser = (data: any): AppUser => {
@@ -409,7 +410,7 @@ export default function App() {
          
          if (cached && lastFetch && (Date.now() - parseInt(lastFetch)) < 3600000) {
             setAppUser(rehydrateAppUser(JSON.parse(cached)));
-            fetchAppUserRan.current = true;
+            fetchAppUserRan.current = user.uid;
             return;
          }
          
@@ -420,7 +421,7 @@ export default function App() {
            setAppUser(data);
            sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(data));
            sessionStorage.setItem(`last_fetch_appuser_${user.uid}`, Date.now().toString());
-           fetchAppUserRan.current = true;
+           fetchAppUserRan.current = user.uid;
          }
        } catch (e: any) {
           console.error("Error fetching app user", e);
@@ -442,7 +443,7 @@ export default function App() {
     };
     
     fetchAppUser();
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) {
@@ -548,16 +549,20 @@ export default function App() {
   const [activeAnnouncementsCount, setActiveAnnouncementsCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || fetchAnnouncementsRan.current) return;
     const fetchAnnouncements = async () => {
       try {
         // Cache announcements in sessionStorage for the duration of the session
-        const cached = sessionStorage.getItem('active_announcements_count');
-        if (cached) {
-          setActiveAnnouncementsCount(parseInt(cached));
+        const cachedCount = sessionStorage.getItem('active_announcements_count');
+        const cachedData = sessionStorage.getItem('active_announcements_data');
+        
+        if (cachedCount && cachedData) {
+          setActiveAnnouncementsCount(parseInt(cachedCount));
+          fetchAnnouncementsRan.current = true;
           return;
         }
 
+        console.log("🔥 [FIREBASE READ] Buscando anúncios...");
         const qAnnouncements = query(
           collection(db, 'announcements'), 
           where('isActive', '==', true),
@@ -570,15 +575,16 @@ export default function App() {
         const announcementsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         sessionStorage.setItem('active_announcements_data', JSON.stringify(announcementsData));
         sessionStorage.setItem('active_announcements_count', count.toString());
+        fetchAnnouncementsRan.current = true;
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, 'announcements', user);
       }
     };
     fetchAnnouncements();
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
-    if (!user || syncChatsRan.current) return;
+    if (!user || syncChatsRan.current === user.uid) return;
     const syncChats = async () => {
       try {
         const lastSync = localStorage.getItem(`last_chat_sync_${user.uid}`);
@@ -680,15 +686,16 @@ export default function App() {
         setLocalChats(finalLocal);
         localStorage.setItem(`last_chat_sync_${user.uid}`, now.toString());
         sessionStorage.setItem(`chats_${user.uid}`, JSON.stringify(finalLocal));
+        syncChatsRan.current = user.uid;
       } catch (error) {
         console.error("Erro na sincronização de chats:", error);
       }
     };
     syncChats();
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
-    if (!user || fetchScriptsRan.current) {
+    if (!user || fetchScriptsRan.current === user.uid) {
       if (!user) {
         const offline = localStorage.getItem('saved_scripts_offline');
         if (offline) setSavedScripts(JSON.parse(offline));
@@ -705,7 +712,7 @@ export default function App() {
         if (cached) {
           setSavedScripts(JSON.parse(cached));
           if (lastSync && (now - parseInt(lastSync)) < twelveHours) {
-            fetchScriptsRan.current = true;
+            fetchScriptsRan.current = user.uid;
             return;
           }
         }
@@ -727,7 +734,7 @@ export default function App() {
         sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scriptsList));
         localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
         localStorage.setItem(`last_script_sync_${user.uid}`, now.toString());
-        fetchScriptsRan.current = true;
+        fetchScriptsRan.current = user.uid;
       } catch (error) {
         const cached = localStorage.getItem('saved_scripts_offline');
         if (cached) setSavedScripts(JSON.parse(cached));
@@ -735,10 +742,12 @@ export default function App() {
       }
     };
     fetchScripts();
-  }, [user]);
+  }, [user?.uid]);
+
+  const lastMsgsFetchId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!currentChatId || !user) return;
+    if (!currentChatId || !user || lastMsgsFetchId.current === currentChatId) return;
 
     // Se o chat for local (ID começa com local_), não buscamos na nuvem
     if (currentChatId.startsWith('local_')) return;
@@ -750,12 +759,13 @@ export default function App() {
         if (localMsgs.length > 0) {
           setMessages(localMsgs);
           
-          // Verificar se buscamos recentemente (nos últimos 15 min) para este chat nesta sessão
+          // Verificar se buscamos recentemente (nos últimos 60 min) para este chat nesta sessão
           const lastFetched = sessionStorage.getItem(`last_fetch_msgs_${currentChatId}`);
-          const canSkip = lastFetched && (Date.now() - parseInt(lastFetched)) < 15 * 60 * 1000;
+          const canSkip = lastFetched && (Date.now() - parseInt(lastFetched)) < 60 * 60 * 1000;
           
           if (canSkip) {
             console.log(`📦 Cache: Usando mensagens locais para ${currentChatId} (Skip Firebase)`);
+            lastMsgsFetchId.current = currentChatId;
             return;
           }
         }
@@ -774,13 +784,14 @@ export default function App() {
           await localChatService.saveMessages(currentChatId, msgList);
           // Marca o tempo da última busca
           sessionStorage.setItem(`last_fetch_msgs_${currentChatId}`, Date.now().toString());
+          lastMsgsFetchId.current = currentChatId;
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
       }
     };
     fetchMessages();
-  }, [currentChatId, user]);
+  }, [currentChatId, user?.uid]);
 
   const handleSignIn = async () => {
     setIsAuthModalOpen(true);
