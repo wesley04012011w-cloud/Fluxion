@@ -124,19 +124,9 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
   
-  // MODO MANUTENÇÃO FORÇADO (LOCAL)
-  const [hardcodedMaintenance, setHardcodedMaintenance] = useState(false);
-  
-  const [localMaintenancePreview, setLocalMaintenancePreview] = useState(() => {
-    return localStorage.getItem('admin_maintenance_preview') === 'true';
-  });
-  const [adminBypassedMode, setAdminBypassedMode] = useState(() => {
-    return localStorage.getItem('admin_bypassed_mode') === 'true' || localStorage.getItem('local_bypass_active') === 'true';
-  });
-
   const lastMessageTimeRef = useRef<number>(0);
+
   const requestCountRef = useRef<number>(0);
   const windowStartTimeRef = useRef<number>(0);
   const rateLimitedUntilRef = useRef<number>(0);
@@ -175,48 +165,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Monitor Maintenance Mode from System Config (Single load to save quota)
-    const fetchConfig = async () => {
+    // Carrega chaves globais do banco apenas uma vez para economizar cota
+    const fetchGlobalKeys = async () => {
       try {
-        // Optimize: Only fetch once every 24 hours or if we have no local keys
         const lastFetch = localStorage.getItem('last_config_fetch');
         const now = Date.now();
         const oneDay = 24 * 60 * 60 * 1000;
         
-        if (!lastFetch || (now - parseInt(lastFetch)) > oneDay || !localStorage.getItem('local_gemini_keys')) {
-          const snap = await getDocFromServer(doc(db, 'config', 'main'));
-          if (snap.exists()) {
-            const data = snap.data();
-            setMaintenanceMode(data.maintenanceMode || false);
-            
-            // Distributed API Keys System
-            if (data.geminiApiKeys && Array.isArray(data.geminiApiKeys)) {
-              localStorage.setItem('local_gemini_keys', JSON.stringify(data.geminiApiKeys));
-            }
-            
-            localStorage.setItem('last_config_fetch', now.toString());
+        if (lastFetch && (now - parseInt(lastFetch)) < oneDay) return;
+
+        const snap = await getDocFromServer(doc(db, 'config', 'main'));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.geminiApiKeys && Array.isArray(data.geminiApiKeys)) {
+            localStorage.setItem('local_gemini_keys', JSON.stringify(data.geminiApiKeys));
           }
+          localStorage.setItem('last_config_fetch', now.toString());
         }
       } catch (error) {
-        console.warn("Could not fetch maintenance status (offline/quota):", error);
+        console.warn("Erro ao buscar chaves globais:", error);
       }
     };
-    fetchConfig();
-
-    // Handle Local Maintenance Preview from Admin Page
-    const handleLocalPreview = (e: any) => {
-      setLocalMaintenancePreview(e.detail.active);
-      if (e.detail.active) {
-        setAdminBypassedMode(false);
-        localStorage.setItem('admin_bypassed_mode', 'false');
-      }
-    };
-    window.addEventListener('local-maintenance-preview', handleLocalPreview);
-
-    return () => {
-      window.removeEventListener('local-maintenance-preview', handleLocalPreview);
-    };
-  }, []);
+    if (user) fetchGlobalKeys();
+  }, [user]);
 
   const [saveModal, setSaveModal] = useState<{
     isOpen: boolean;
@@ -1268,68 +1239,6 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
     <MotionConfig reducedMotion={isOptimized ? "always" : "never"}>
       <Toaster theme="dark" position="top-right" richColors closeButton />
 
-
-      {/* MODO MANUTENÇÃO OVERLAY */}
-      <AnimatePresence>
-        {(hardcodedMaintenance || maintenanceMode || (isAdmin && localMaintenancePreview)) && (!isAdmin || !adminBypassedMode) && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] bg-[#000000] flex flex-col items-center justify-center p-6 text-center overflow-hidden"
-          >
-            
-            <div className="relative z-10 space-y-8 max-w-md">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                className="w-24 h-24 mx-auto text-blue-500 opacity-80"
-              >
-                <RefreshCw size={96} strokeWidth={1} />
-              </motion.div>
-              
-              <div className="space-y-4">
-                <h1 className="text-4xl font-black tracking-tighter uppercase text-white">
-                  App em Manutenção
-                </h1>
-                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs leading-relaxed">
-                  Estamos realizando melhorias técnicas para garantir a melhor experiência possível. Voltaremos em instantes!
-                </p>
-              </div>
-
-              {isAdmin && (
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => {
-                      setAdminBypassedMode(true);
-                      localStorage.setItem('admin_bypassed_mode', 'true');
-                    }}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-[10px] font-black text-white transition-all uppercase tracking-widest shadow-xl shadow-blue-900/20"
-                  >
-                    Continuar como Administrador
-                  </button>
-                  <p className="text-[9px] text-gray-500 font-bold uppercase text-center opacity-60">
-                    Você está vendo isso porque é um Admin
-                  </p>
-                </div>
-              )}
-
-              <div className="pt-8 border-t border-white/5">
-                <div className="flex items-center justify-center gap-3 text-blue-400">
-                  <Activity size={16} className="animate-pulse" />
-                  <span className="text-[10px] font-black uppercase tracking-tight">Status: Otimizando Infraestrutura</span>
-                </div>
-              </div>
-              
-              <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
-                <p className="text-gray-500 text-[10px] font-mono italic">
-                  Agradecemos a paciência. Siga-nos no Discord para atualizações em tempo real.
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {isOffline && (

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, Info } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, orderBy, where, Timestamp, getDocsFromServer } from 'firebase/firestore';
+import { collection, query, orderBy, where, Timestamp, getDocsFromServer, limit } from 'firebase/firestore';
 import { Announcement } from '../types';
 
 interface NotificationsModalProps {
