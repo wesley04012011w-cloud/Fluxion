@@ -149,5 +149,23 @@ export const localChatService = {
     const messages = await localChatService.getMessages(chatId);
     messages.push(message);
     await localChatService.saveMessages(chatId, messages);
+  },
+
+  async syncWithSupabase(remoteChats: any[]) {
+    const local = await this.getChats();
+    const localIds = new Set(local.map(c => c.id));
+    
+    for (const remote of remoteChats) {
+      if (!localIds.has(remote.id)) {
+        await this.saveChat({
+          id: remote.id,
+          title: remote.title || 'Chat s/ título',
+          userId: remote.user_id,
+          createdAt: { seconds: Math.floor(new Date(remote.created_at).getTime() / 1000), nanoseconds: 0 } as any,
+          updatedAt: { seconds: Math.floor(new Date(remote.updated_at).getTime() / 1000), nanoseconds: 0 } as any,
+        } as Chat);
+      }
+    }
+    return await this.getChats();
   }
 };

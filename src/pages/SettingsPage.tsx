@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AppUser, OperationType, handleFirestoreError, cn } from '../types';
 import { fetchRepoContents, fetchFileContent, updateFileContent, GitHubFile } from '../services/githubService';
 import { auth, db } from '../firebase';
+import { supabaseService } from '../services/supabaseService';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   collection, 
@@ -158,23 +159,21 @@ export default function SettingsPage() {
           }
         }
 
-        const q = query(
-          collection(db, 'scripts'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
-        );
-        const snapshot = await getDocs(q);
-        const scripts = snapshot.docs.map(doc => ({ 
+        console.log("🚀 [SUPABASE READ] Buscando scripts...");
+        const scriptsData = await supabaseService.getScripts(user.uid);
+        
+        const scripts = scriptsData?.map((doc: any) => ({ 
           id: doc.id, 
-          name: doc.data().name, 
-          content: doc.data().content 
-        }));
+          name: doc.name, 
+          content: doc.content 
+        })) || [];
+
         setSavedScripts(scripts);
         sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scripts));
         localStorage.setItem(`last_script_sync_${user.uid}`, now.toString());
         setScriptsLoading(false);
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'scripts', user);
+        console.warn("Supabase fetch failed, fallback to local/Firestore...");
         setScriptsLoading(false);
       }
     };

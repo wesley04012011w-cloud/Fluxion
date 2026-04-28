@@ -38,6 +38,8 @@ import { Chat, Message, OperationType, handleFirestoreError, ChatMode, UserStats
 import { localChatService } from './services/localChatService';
 import AuthModal from './components/AuthModal';
 import { Toaster, toast } from 'sonner';
+import { supabase } from './lib/supabase';
+import { supabaseService } from './services/supabaseService';
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ConfigPage from './pages/ConfigPage';
@@ -256,13 +258,16 @@ export default function App() {
       setUserIp(ip);
       localStorage.setItem('last_user_ip', ip);
 
-      // Verificar se o IP está banido
-      const ipKey = ip.replace(/\./g, '_');
-      const ipDocRef = doc(db, 'banned_ips', ipKey);
-      
       try {
-        const snapshot = await getDoc(ipDocRef);
-        const isBanned = snapshot.exists();
+        const isBannedSupabase = await supabaseService.isIpBanned(ip);
+        let isBanned = isBannedSupabase;
+
+        if (!isBannedSupabase) {
+          const ipKey = ip.replace(/\./g, '_');
+          const snapshot = await getDoc(doc(db, 'banned_ips', ipKey));
+          if (snapshot.exists()) isBanned = true;
+        }
+
         setIsIpBanned(isBanned);
         localStorage.setItem('is_ip_banned', String(isBanned));
         localStorage.setItem('last_ip_ban_check', Date.now().toString());
@@ -274,7 +279,7 @@ export default function App() {
           console.log("✅ Status: IP Limpo", ip);
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `banned_ips/${ipKey}`, user);
+        console.error("Erro ao verificar IP:", error);
       }
     };
     fetchIpAndCheckBan();
@@ -414,14 +419,29 @@ export default function App() {
             return;
          }
          
-         console.log("🔥 [FIREBASE READ] Buscando perfil do usuário...");
-         const userDoc = await getDoc(doc(db, 'users', user.uid));
-         if (userDoc.exists()) {
-           const data = userDoc.data() as AppUser;
-           setAppUser(data);
-           sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(data));
+         console.log("🚀 [SUPABASE READ] Buscando perfil do usuário...");
+         const data = await supabaseService.getUserProfile(user.uid);
+         
+         if (data) {
+           const rehydrated = rehydrateAppUser(data);
+           setAppUser(rehydrated);
+           sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(rehydrated));
            sessionStorage.setItem(`last_fetch_appuser_${user.uid}`, Date.now().toString());
            fetchAppUserRan.current = user.uid;
+         } else {
+           // Fallback to Firestore
+           console.log("🔥 [FIREBASE READ] Fallback perfil usuário...");
+           const userDoc = await getDoc(doc(db, 'users', user.uid));
+           if (userDoc.exists()) {
+             const fData = userDoc.data() as AppUser;
+             setAppUser(fData);
+             sessionStorage.setItem(`appUser_${user.uid}`, JSON.stringify(fData));
+             sessionStorage.setItem(`last_fetch_appuser_${user.uid}`, Date.now().toString());
+             fetchAppUserRan.current = user.uid;
+             
+             // Auto-migrate to Supabase
+             supabaseService.updateUserProfile(user.uid, fData).catch(console.error);
+           }
          }
        } catch (e: any) {
           console.error("Error fetching app user", e);
@@ -513,6 +533,15 @@ export default function App() {
           localStorage.setItem('last_user_ip', currentIp);
         }
 
+        try {
+          await supabaseService.updateUserProfile(user.uid, presenceData);
+          if (currentIp) {
+            await supabaseService.logAccess(user.uid, currentIp, user.email || '');
+          }
+        } catch (sErr) {
+          console.warn("Supabase presence/log update failed:", sErr);
+        }
+
         await setDoc(doc(db, 'users', user.uid), presenceData, { merge: true });
         localStorage.setItem('last_presence_update', Date.now().toString());
       } catch (e) {
@@ -552,7 +581,6 @@ export default function App() {
     if (!user || fetchAnnouncementsRan.current) return;
     const fetchAnnouncements = async () => {
       try {
-        // Cache announcements in sessionStorage for the duration of the session
         const cachedCount = sessionStorage.getItem('active_announcements_count');
         const cachedData = sessionStorage.getItem('active_announcements_data');
         
@@ -562,22 +590,36 @@ export default function App() {
           return;
         }
 
-        console.log("🔥 [FIREBASE READ] Buscando anúncios...");
-        const qAnnouncements = query(
-          collection(db, 'announcements'), 
-          where('isActive', '==', true),
-          limit(5)
-        );
-        const snapshot = await getDocs(qAnnouncements);
-        const count = snapshot.size;
-        setActiveAnnouncementsCount(count);
-        
-        const announcementsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        sessionStorage.setItem('active_announcements_data', JSON.stringify(announcementsData));
-        sessionStorage.setItem('active_announcements_count', count.toString());
+        console.log("🚀 [SUPABASE READ] Buscando anúncios...");
+        const { data, error } = await supabase
+          .from('announcements')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        setActiveAnnouncementsCount(data.length);
+        sessionStorage.setItem('active_announcements_data', JSON.stringify(data));
+        sessionStorage.setItem('active_announcements_count', data.length.toString());
         fetchAnnouncementsRan.current = true;
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'announcements', user);
+        console.warn("Supabase announcements failed, falling back to Firestore...");
+        try {
+          const qAnnouncements = query(
+            collection(db, 'announcements'), 
+            where('isActive', '==', true),
+            limit(5)
+          );
+          const snapshot = await getDocs(qAnnouncements);
+          setActiveAnnouncementsCount(snapshot.size);
+          const announcementsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          sessionStorage.setItem('active_announcements_data', JSON.stringify(announcementsData));
+          sessionStorage.setItem('active_announcements_count', snapshot.size.toString());
+          fetchAnnouncementsRan.current = true;
+        } catch (fError) {
+          console.error("Firestore announcements failure:", fError);
+        }
       }
     };
     fetchAnnouncements();
@@ -591,95 +633,22 @@ export default function App() {
         const now = Date.now();
         const oneDay = 24 * 60 * 60 * 1000;
 
-        // 1. Tenta carregar do IndexedDB primeiro (Imediato)
         const local = await localChatService.getChats();
         if (local.length > 0) {
           setLocalChats(local);
         }
 
-        // 2. Se já sincronizou nas últimas 24h e temos dados locais, não lê do Firebase
         if (lastSync && (now - parseInt(lastSync)) < oneDay && local.length > 0) {
           console.log("☁️ Sincronização em dia. Usando dados locais.");
-          syncChatsRan.current = true;
+          syncChatsRan.current = user.uid;
           return;
         }
 
-        console.log("☁️ Sincronizando chats e mensagens com Firebase (Ciclo 24h)...");
+        console.log("🚀 [SUPABASE READ] Sincronizando chats...");
+        const remoteChats = await supabaseService.getChats(user.uid);
         
-        // 3. Sincronizar envios pendentes (Local -> Firebase)
-        const unsynced = await localChatService.getUnsyncedChats();
-        const unsyncedMsgs = await localChatService.getUnsyncedMessages();
-
-        // Sync Chats
-        for (const chat of unsynced) {
-          try {
-            const isLocalId = chat.id.startsWith('local_');
-            const chatRef = isLocalId ? doc(collection(db, 'chats')) : doc(db, 'chats', chat.id);
-            
-            const firebaseData = { ...chat };
-            if (isLocalId) {
-              const oldId = chat.id;
-              delete (firebaseData as any).id;
-              firebaseData.userId = user.uid;
-              await setDoc(chatRef, firebaseData);
-              
-              // Migrar mensagens do ID local para o novo ID do Firebase
-              const msgs = await localChatService.getMessages(oldId);
-              await localChatService.deleteChat(oldId);
-              await localChatService.saveChat({ ...firebaseData, id: chatRef.id } as Chat);
-              await localChatService.saveMessages(chatRef.id, msgs);
-              await localChatService.markChatSynced(chatRef.id);
-
-              // Atualizar ID atual se estivermos nele
-              if (currentChatId === oldId) setCurrentChatId(chatRef.id);
-            } else {
-              await setDoc(chatRef, firebaseData, { merge: true });
-              await localChatService.markChatSynced(chat.id);
-            }
-          } catch (e) {
-            console.warn("Falha ao sincronizar chat:", chat.id);
-          }
-        }
-
-        // Sync Messages
-        for (const mGroup of unsyncedMsgs) {
-          try {
-            if (mGroup.chatId.startsWith('local_')) continue; // Já tratado na migração de chat acima
-
-            // Batch update no Firebase (simulado via loop para simplicidade ou use writeBatch)
-            // Para economizar, enviamos todas as mensagens do chat de uma vez para uma subcoleção
-            const messagesRef = collection(db, `chats/${mGroup.chatId}/messages`);
-            
-            // Estratégia de economia: só enviamos as mensagens novas
-            // Aqui vamos simplificar enviando as que não existem no banco
-            // Mas para seguir o pedido de "enviado a cada 24h", vamos sobrescrever 
-            // ou adicionar apenas as últimas.
-            for (const msg of mGroup.messages) {
-              await setDoc(doc(messagesRef, msg.id), msg, { merge: true });
-            }
-            await localChatService.markMessagesSynced(mGroup.chatId);
-          } catch (e) {
-            console.warn("Falha ao sincronizar mensagens:", mGroup.chatId);
-          }
-        }
-
-        // 4. Puxar do Firebase para Local (Firebase -> Local)
-        const q = query(
-          collection(db, 'chats'),
-          where('userId', '==', user.uid),
-          orderBy('updatedAt', 'desc'),
-          limit(30)
-        );
-        const snapshot = await getDocs(q);
-        const firebaseChats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
-        
-        // Atualizar local com dados do servidor
-        for (const fChat of firebaseChats) {
-          const localMatch = local.find(l => l.id === fChat.id);
-          if (!localMatch || (fChat.updatedAt as any).seconds > (localMatch.updatedAt as any).seconds) {
-             await localChatService.saveChat(fChat);
-             await localChatService.markChatSynced(fChat.id);
-          }
+        if (remoteChats && remoteChats.length > 0) {
+          await localChatService.syncWithSupabase(remoteChats);
         }
 
         const finalLocal = await localChatService.getChats();
@@ -688,7 +657,7 @@ export default function App() {
         sessionStorage.setItem(`chats_${user.uid}`, JSON.stringify(finalLocal));
         syncChatsRan.current = user.uid;
       } catch (error) {
-        console.error("Erro na sincronização de chats:", error);
+        console.error("Erro na sincronização de chats (Supabase):", error);
       }
     };
     syncChats();
@@ -717,28 +686,24 @@ export default function App() {
           }
         }
 
-        console.log("🔥 [FIREBASE READ] Sincronizando scripts (Ciclo 12h)...");
-        const q = query(
-          collection(db, 'scripts'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(20)
-        );
-        const snapshot = await getDocs(q);
-        const scriptsList = snapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          name: doc.data().name, 
-          content: doc.data().content 
-        }));
+        console.log("🚀 [SUPABASE READ] Buscando scripts...");
+        const scripts = await supabaseService.getScripts(user.uid);
+        
+        const scriptsList = scripts?.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          content: s.content
+        })) || [];
+
         setSavedScripts(scriptsList);
         sessionStorage.setItem(`scripts_${user.uid}`, JSON.stringify(scriptsList));
         localStorage.setItem('saved_scripts_offline', JSON.stringify(scriptsList));
         localStorage.setItem(`last_script_sync_${user.uid}`, now.toString());
         fetchScriptsRan.current = user.uid;
       } catch (error) {
+        console.warn("Supabase scripts failure, falling back to local...");
         const cached = localStorage.getItem('saved_scripts_offline');
         if (cached) setSavedScripts(JSON.parse(cached));
-        handleFirestoreError(error, OperationType.LIST, 'scripts', user);
       }
     };
     fetchScripts();
@@ -770,24 +735,26 @@ export default function App() {
           }
         }
 
-        console.log(`🔥 [FIREBASE READ] Buscando mensagens na nuvem para: ${currentChatId}`);
-        const q = query(
-          collection(db, `chats/${currentChatId}/messages`),
-          orderBy('createdAt', 'desc'),
-          limit(60)
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const msgList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
-          setMessages(msgList);
-          // Sincroniza com local para visualização offline
-          await localChatService.saveMessages(currentChatId, msgList);
-          // Marca o tempo da última busca
+        console.log(`🚀 [SUPABASE READ] Buscando mensagens para: ${currentChatId}`);
+        const msgList = await supabaseService.getMessages(currentChatId);
+        
+        if (msgList && msgList.length > 0) {
+          const finalMsgs = msgList.map((m: any) => ({
+            id: m.id,
+            chatId: m.chat_id,
+            userId: user.uid,
+            role: m.role,
+            content: m.content,
+            createdAt: { seconds: Math.floor(new Date(m.created_at).getTime() / 1000), nanoseconds: 0 } as any
+          }));
+          
+          setMessages(finalMsgs);
+          await localChatService.saveMessages(currentChatId, finalMsgs);
           sessionStorage.setItem(`last_fetch_msgs_${currentChatId}`, Date.now().toString());
           lastMsgsFetchId.current = currentChatId;
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, `chats/${currentChatId}/messages`, user);
+        console.error("Erro ao buscar mensagens no Supabase:", error);
       }
     };
     fetchMessages();
@@ -1010,6 +977,24 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
         }
         return serverTimestamp();
       };
+
+      try {
+        console.log("🚀 [SUPABASE WRITE] Exportando chat e mensagens...");
+        await supabaseService.createChat({
+          userId: user.uid,
+          title: localChat.title || "Untitled Chat"
+        });
+
+        for (const msg of localMsgs) {
+          await supabaseService.addMessage({
+            chatId: firebaseChatId,
+            role: msg.role,
+            content: msg.content || ""
+          });
+        }
+      } catch (sErr) {
+        console.warn("Supabase export failed, attempting Firestore fallback:", sErr);
+      }
 
       try {
         await setDoc(doc(db, 'chats', firebaseChatId), {
@@ -1243,6 +1228,17 @@ BLOCO 1 → \`!next\` → BLOCO 2 → \`!next\` → BLOCO 3 → \`!next\` → BL
   const executeSaveScript = async (name: string, overwrite: boolean) => {
     if (!user) return;
     try {
+      // Supabase Write
+      try {
+        await supabaseService.saveScript({
+          userId: user.uid,
+          name: name,
+          content: saveModal.content
+        });
+      } catch (sErr) {
+        console.warn("Supabase script save failed:", sErr);
+      }
+
       if (overwrite) {
         const existingScript = savedScripts.find(s => s.name.toLowerCase() === name.toLowerCase());
         if (existingScript) {

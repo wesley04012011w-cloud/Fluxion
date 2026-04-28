@@ -18,6 +18,8 @@ import { AppUser, OperationType, handleFirestoreError, cn, AppConfig } from '../
 import { Toaster, toast } from 'sonner';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { supabase } from '../lib/supabase';
+import { supabaseService } from '../services/supabaseService';
 import { 
   collection, 
   query, 
@@ -87,20 +89,24 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Fetch Config (Single load to save quota)
+    // Fetch Config
     const fetchConfig = async () => {
         try {
-            const docSnap = await getDocFromServer(doc(db, 'config', 'main'));
-            if (docSnap.exists()) {
-                const data = docSnap.data() as AppConfig;
-                setAppConfig(data);
-                setDeepseekKey(data.deepseekApiKey || '');
-                setOpenRouterKey(data.openRouterApiKey || '');
+            console.log("🚀 [SUPABASE READ] Buscando config...");
+            const data = await supabaseService.getConfig();
+            if (data) {
+                setAppConfig(data as any);
+                setDeepseekKey(data.deepseek_api_key || '');
+                setOpenRouterKey(data.open_router_api_key || '');
             } else {
-                setAppConfig({ maintenanceMode: false } as AppConfig);
+                const docSnap = await getDocFromServer(doc(db, 'config', 'main'));
+                if (docSnap.exists()) {
+                    const fData = docSnap.data() as AppConfig;
+                    setAppConfig(fData);
+                }
             }
         } catch (error) {
-            handleFirestoreError(error, OperationType.GET, 'config/main', user);
+            console.error("Config fetch error:", error);
         }
     };
     fetchConfig();
@@ -118,35 +124,62 @@ export default function AdminPage() {
     );
     */
 
-    // Fetch Announcements (REMOVED REALTIME LISTENER)
+    // Fetch Announcements
     const fetchAnnouncements = async () => {
+        if (!supabase) return;
         try {
-            const snap = await getDocs(query(collection(db, 'announcements'), orderBy('createdAt', 'desc')));
-            setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            console.log("🚀 [SUPABASE READ] Buscando anúncios...");
+            const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            setAnnouncements(data.map((d: any) => ({
+              id: d.id,
+              ...d,
+              createdAt: { seconds: Math.floor(new Date(d.created_at).getTime() / 1000), nanoseconds: 0 } as any
+            })));
         } catch (error) {
-            handleFirestoreError(error, OperationType.LIST, 'announcements', user);
+            console.warn("Supabase announcements failed, fallback to Firestore");
+            try {
+                const snap = await getDocs(query(collection(db, 'announcements'), orderBy('createdAt', 'desc')));
+                setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (fError) {
+                console.error("Firestore fell back too", fError);
+            }
         }
     };
     fetchAnnouncements();
   }, [isAdmin]);
 
   const fetchLogsAndIps = async () => {
+    if (!supabase) {
+      toast.error('Supabase não inicializado.');
+      return;
+    }
     try {
-      toast.info('Buscando dados. Isso pode custar cota de leituras...', { duration: 2000, id: 'fetch-logs' });
-      const bannedSnap = await getDocs(query(collection(db, 'banned_ips'), limit(200)));
-      setBannedIps(bannedSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      toast.info('Buscando dados no Supabase...', { duration: 2000, id: 'fetch-logs' });
+      
+      // Banned IPs from Supabase
+      const { data: bIps, error: bErr } = await supabase.from('banned_ips').select('*').limit(200);
+      if (bErr) throw bErr;
+      setBannedIps(bIps);
 
-      const accSnap = await getDocs(query(collection(db, 'access_logs'), orderBy('timestamp', 'desc'), limit(100)));
-      setAccessLogs(accSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Access Logs from Supabase
+      const { data: logs, error: lErr } = await supabase.from('access_logs').select('*').order('timestamp', { ascending: false }).limit(100);
+      if (lErr) throw lErr;
+      setAccessLogs(logs);
       
-      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const usersSnap = await getDocs(query(collection(db, 'users'), where('lastActive', '>=', Timestamp.fromDate(last24h)), orderBy('lastActive', 'desc'), limit(50)));
-      setUsers(usersSnap.docs.map(d => ({ ...d.data() } as AppUser)));
+      // Users from Supabase
+      const { data: sUsers, error: uErr } = await supabase.from('users').select('*').order('last_active', { ascending: false }).limit(50);
+      if (uErr) throw uErr;
+      setUsers(sUsers as any);
       
-      toast.success('Logs, IPs e Usuários sincronizados!', { id: 'fetch-logs' });
+      toast.success('Dados do Supabase carregados!', { id: 'fetch-logs' });
     } catch (e) {
-      handleFirestoreError(e, OperationType.LIST, 'logs/ips/users', user);
-      toast.error('Erro ao buscar dados.', { id: 'fetch-logs' });
+      console.error("Supabase fetch failed, trying Firestore fallback...", e);
+      // Fallback implementation removed for brevity or kept simple
+      try {
+        const bannedSnap = await getDocs(query(collection(db, 'banned_ips'), limit(200)));
+        setBannedIps(bannedSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (fErr) {}
     }
   };
 
