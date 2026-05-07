@@ -1,0 +1,236 @@
+local Library = {}
+
+-- // SERVIÇOS
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Root = (gethui and gethui()) or CoreGui
+
+-- // TEMA PADRÃO (Pode ser expandido futuramente)
+local Theme = {
+    Main = Color3.fromRGB(10, 12, 16),
+    TopBar = Color3.fromRGB(16, 18, 24),
+    Sidebar = Color3.fromRGB(8, 10, 14),
+    Accent1 = Color3.fromRGB(0, 255, 240),
+    Accent2 = Color3.fromRGB(170, 50, 255),
+    Stroke = Color3.fromRGB(45, 48, 60),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextDim = Color3.fromRGB(150, 155, 170),
+    Font = Enum.Font.GothamBold,
+    FontLight = Enum.Font.GothamMedium
+}
+
+-- // UTILITÁRIOS INTERNOS
+local function CreateCorner(p, r)
+    local c = Instance.new("UICorner", p)
+    c.CornerRadius = UDim.new(0, r or 10)
+end
+
+local function CreateStroke(p, c, th)
+    local s = Instance.new("UIStroke", p)
+    s.Color = c or Theme.Stroke
+    s.Thickness = th or 2
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Transparency = 0.3
+    return s
+end
+
+local function MakeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = true; dragStart = input.Position; startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- // INICIALIZAÇÃO DA LIB
+function Library:CreateWindow(hubName, hubVersion)
+    hubName = hubName or "FLUXIOM"
+    hubVersion = hubVersion or "V7"
+    
+    if Root:FindFirstChild("FluxiomV7") then Root.FluxiomV7:Destroy() end
+
+    local Screen = Instance.new("ScreenGui", Root)
+    Screen.Name = "FluxiomV7"
+    Screen.ResetOnSpawn = false
+
+    local FAB = Instance.new("ImageButton", Screen)
+    FAB.Name = "ToggleBot"
+    FAB.Size = UDim2.new(0, 50, 0, 50)
+    FAB.Position = UDim2.new(0, 30, 0.5, -25)
+    FAB.BackgroundColor3 = Theme.Main
+    FAB.Image = "rbxassetid://13476722240" 
+    CreateCorner(FAB, 25); local FABStroke = CreateStroke(FAB, Theme.Accent1, 2)
+    MakeDraggable(FAB)
+
+    local Main = Instance.new("CanvasGroup", Screen)
+    Main.Name = "MainWindow"
+    Main.Size = UDim2.new(0, 560, 0, 360)
+    Main.Position = UDim2.new(0.5, -280, 0.5, -180)
+    Main.BackgroundColor3 = Theme.Main
+    Main.BorderSizePixel = 0
+    Main.Visible = false
+    CreateCorner(Main, 12); local MStroke = CreateStroke(Main, Theme.Accent1, 2.2)
+    MakeDraggable(Main)
+
+    -- Animação Neon RGB
+    RunService.RenderStepped:Connect(function()
+        local color = Theme.Accent1:lerp(Theme.Accent2, (math.sin(tick() * 2) + 1) / 2)
+        MStroke.Color = color
+        FABStroke.Color = color
+        FAB.ImageColor3 = color
+    end)
+
+    local TopBar = Instance.new("Frame", Main)
+    TopBar.Size = UDim2.new(1, 0, 0, 45); TopBar.BackgroundColor3 = Theme.TopBar; CreateCorner(TopBar, 12)
+
+    local Title = Instance.new("TextLabel", TopBar)
+    Title.Size = UDim2.new(0, 400, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1
+    Title.Text = hubName .. " <font color='#00FFF0'>" .. hubVersion .. "</font>"; Title.TextColor3 = Theme.Text; Title.Font = Theme.Font; Title.TextSize = 15; Title.RichText = true; Title.TextXAlignment = "Left"
+
+    local Sidebar = Instance.new("Frame", Main)
+    Sidebar.Size = UDim2.new(0, 145, 1, -55); Sidebar.Position = UDim2.new(0, 8, 0, 50); Sidebar.BackgroundColor3 = Theme.Sidebar; CreateCorner(Sidebar, 10)
+
+    local TabScroll = Instance.new("ScrollingFrame", Sidebar)
+    TabScroll.Size = UDim2.new(1, 0, 1, -10); TabScroll.Position = UDim2.new(0, 0, 0, 5); TabScroll.BackgroundTransparency = 1; TabScroll.ScrollBarThickness = 0
+    local TabList = Instance.new("UIListLayout", TabScroll); TabList.Padding = UDim.new(0, 5); TabList.HorizontalAlignment = "Center"
+
+    local Container = Instance.new("Frame", Main)
+    Container.Size = UDim2.new(1, -170, 1, -55); Container.Position = UDim2.new(0, 160, 0, 50); Container.BackgroundTransparency = 1
+
+    FAB.MouseButton1Click:Connect(function()
+        Main.Visible = not Main.Visible
+        if Main.Visible then
+            Main.GroupTransparency = 1
+            TweenService:Create(Main, TweenInfo.new(0.4), {GroupTransparency = 0}):Play()
+        end
+    end)
+
+    local Window = {Tabs = {}}
+
+    function Window:CreateTab(name)
+        local TabBtn = Instance.new("TextButton", TabScroll)
+        TabBtn.Size = UDim2.new(0, 130, 0, 34); TabBtn.BackgroundColor3 = Theme.TopBar; TabBtn.Text = name; TabBtn.TextColor3 = Theme.TextDim; TabBtn.Font = Theme.Font; TabBtn.TextSize = 11; TabBtn.AutoButtonColor = false
+        CreateCorner(TabBtn, 6); local tStroke = CreateStroke(TabBtn, Theme.Stroke, 1.2)
+
+        local Page = Instance.new("CanvasGroup", Container)
+        Page.Size = UDim2.new(1, 0, 1, 0); Page.BackgroundTransparency = 1; Page.Visible = false; Page.GroupTransparency = 1
+        
+        local Scroll = Instance.new("ScrollingFrame", Page)
+        Scroll.Size = UDim2.new(1, 0, 1, 0); Scroll.BackgroundTransparency = 1; Scroll.ScrollBarThickness = 3; Scroll.ScrollBarImageColor3 = Theme.Accent1; Scroll.CanvasSize = UDim2.new(0,0,0,0)
+        local PList = Instance.new("UIListLayout", Scroll); PList.Padding = UDim.new(0, 8); PList.SortOrder = "LayoutOrder"
+        
+        PList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            Scroll.CanvasSize = UDim2.new(0,0,0, PList.AbsoluteContentSize.Y + 10)
+        end)
+
+        TabBtn.MouseButton1Click:Connect(function()
+            for _, v in pairs(Window.Tabs) do
+                v.Page.Visible = false; v.Page.GroupTransparency = 1
+                TweenService:Create(v.Btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.TopBar, TextColor3 = Theme.TextDim}):Play()
+                v.Stroke.Color = Theme.Stroke
+            end
+            Page.Visible = true
+            TweenService:Create(Page, TweenInfo.new(0.4), {GroupTransparency = 0}):Play()
+            TweenService:Create(TabBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Accent1, TextColor3 = Theme.Main}):Play()
+            tStroke.Color = Theme.Accent1
+        end)
+
+        local Components = {}
+
+        function Components:Toggle(txt, def, callback)
+            local T = Instance.new("TextButton", Scroll)
+            T.Size = UDim2.new(1, -10, 0, 38); T.BackgroundColor3 = Theme.TopBar; T.Text = ""; CreateCorner(T, 8); CreateStroke(T)
+            local L = Instance.new("TextLabel", T)
+            L.Size = UDim2.new(1, -60, 1, 0); L.Position = UDim2.new(0, 12, 0, 0); L.BackgroundTransparency = 1; L.Text = txt; L.TextColor3 = Theme.Text; L.Font = Theme.Font; L.TextSize = 12; L.TextXAlignment = "Left"
+            local B = Instance.new("Frame", T); B.Size = UDim2.new(0, 36, 0, 18); B.Position = UDim2.new(1, -45, 0.5, -9); B.BackgroundColor3 = Theme.Main; CreateCorner(B, 10)
+            local K = Instance.new("Frame", B); K.Size = UDim2.new(0, 14, 0, 14); K.Position = UDim2.new(0, 2, 0.5, -7); K.BackgroundColor3 = Theme.TextDim; CreateCorner(K, 7)
+            local active = def
+            local function Update()
+                local p = active and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+                TweenService:Create(K, TweenInfo.new(0.2), {Position = p, BackgroundColor3 = active and Theme.Accent1 or Theme.TextDim}):Play()
+                TweenService:Create(B, TweenInfo.new(0.2), {BackgroundColor3 = active and Color3.fromRGB(30, 60, 60) or Theme.Main}):Play()
+                callback(active)
+            end
+            T.MouseButton1Click:Connect(function() active = not active Update() end)
+            Update()
+        end
+
+        function Components:Button(txt, callback)
+            local B = Instance.new("TextButton", Scroll)
+            B.Size = UDim2.new(1, -10, 0, 35); B.BackgroundColor3 = Theme.TopBar; B.Text = txt; B.TextColor3 = Theme.Text; B.Font = Theme.Font; B.TextSize = 12; CreateCorner(B, 8); CreateStroke(B)
+            B.MouseButton1Click:Connect(callback)
+        end
+
+        function Components:Slider(txt, min, max, def, callback)
+            local S = Instance.new("Frame", Scroll); S.Size = UDim2.new(1, -10, 0, 48); S.BackgroundColor3 = Theme.TopBar; CreateCorner(S, 8)
+            local L = Instance.new("TextLabel", S); L.Size = UDim2.new(1, -15, 0, 28); L.Position = UDim2.new(0, 12, 0, 2); L.BackgroundTransparency = 1; L.Text = txt; L.TextColor3 = Theme.Text; L.Font = Theme.Font; L.TextSize = 11; L.TextXAlignment = "Left"
+            local V = Instance.new("TextLabel", S); V.Size = UDim2.new(0, 50, 0, 28); V.Position = UDim2.new(1, -60, 0, 2); V.BackgroundTransparency = 1; V.Text = tostring(def); V.TextColor3 = Theme.Accent2; V.Font = Theme.Font; V.TextSize = 11; V.TextXAlignment = "Right"
+            local Bar = Instance.new("Frame", S); Bar.Size = UDim2.new(1, -24, 0, 6); Bar.Position = UDim2.new(0, 12, 1, -12); Bar.BackgroundColor3 = Theme.Main; CreateCorner(Bar, 3)
+            local Fill = Instance.new("Frame", Bar); Fill.Size = UDim2.new((def-min)/(max-min), 0, 1, 0); Fill.BackgroundColor3 = Theme.Accent1; CreateCorner(Fill, 3)
+            local function Update(input)
+                local per = math.clamp((input.Position.X - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
+                local val = math.floor(min + (max - min) * per)
+                Fill.Size = UDim2.new(per, 0, 1, 0); V.Text = tostring(val); callback(val)
+            end
+            local dragging = false
+            Bar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true Update(i) end end)
+            UserInputService.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then Update(i) end end)
+            UserInputService.InputEnded:Connect(function(i) dragging = false end)
+        end
+
+        function Components:Dropdown(txt, list, callback)
+            local D = Instance.new("Frame", Scroll); D.Size = UDim2.new(1, -10, 0, 38); D.BackgroundColor3 = Theme.TopBar; D.ClipsDescendants = true; CreateCorner(D, 8); CreateStroke(D)
+            local DLbl = Instance.new("TextLabel", D); DLbl.Size = UDim2.new(1, -40, 0, 38); DLbl.Position = UDim2.new(0, 12, 0, 0); DLbl.BackgroundTransparency = 1; DLbl.Text = txt .. " : ..."; DLbl.TextColor3 = Theme.Text; DLbl.Font = Theme.Font; DLbl.TextSize = 11; DLbl.TextXAlignment = "Left"
+            local DBtn = Instance.new("TextButton", D); DBtn.Size = UDim2.new(1, 0, 0, 38); DBtn.BackgroundTransparency = 1; DBtn.Text = ""
+            local ContainerBox = Instance.new("Frame", D); ContainerBox.Position = UDim2.new(0, 5, 0, 40); ContainerBox.Size = UDim2.new(1, -10, 0, 0); ContainerBox.BackgroundTransparency = 1
+            local L = Instance.new("UIListLayout", ContainerBox); L.Padding = UDim.new(0, 5)
+            local open = false
+            DBtn.MouseButton1Click:Connect(function()
+                open = not open
+                TweenService:Create(D, TweenInfo.new(0.3), {Size = UDim2.new(1, -10, 0, open and (L.AbsoluteContentSize.Y + 45) or 38)}):Play()
+            end)
+            for _, v in pairs(list) do
+                local Opt = Instance.new("TextButton", ContainerBox)
+                Opt.Size = UDim2.new(1, 0, 0, 25); Opt.BackgroundColor3 = Theme.Main; Opt.Text = v; Opt.TextColor3 = Theme.TextDim; Opt.Font = Theme.FontLight; Opt.TextSize = 11; CreateCorner(Opt, 4)
+                Opt.MouseButton1Click:Connect(function()
+                    DLbl.Text = txt .. " : " .. v; open = false; callback(v)
+                    TweenService:Create(D, TweenInfo.new(0.3), {Size = UDim2.new(1, -10, 0, 38)}):Play()
+                end)
+            end
+        end
+
+        function Components:Section(txt)
+            local S = Instance.new("TextLabel", Scroll); S.Size = UDim2.new(1, 0, 0, 25); S.BackgroundTransparency = 1; S.Text = "» " .. txt:upper(); S.TextColor3 = Theme.Accent1; S.Font = Theme.Font; S.TextSize = 10; S.TextXAlignment = "Left"
+        end
+
+        table.insert(Window.Tabs, {Btn = TabBtn, Page = Page, Stroke = tStroke})
+        if #Window.Tabs == 1 then 
+            Page.Visible = true; Page.GroupTransparency = 0; TabBtn.BackgroundColor3 = Theme.Accent1; TabBtn.TextColor3 = Theme.Main; tStroke.Color = Theme.Accent1 
+        end
+        return Components
+    end
+
+    return Window
+end
+
+return Library
