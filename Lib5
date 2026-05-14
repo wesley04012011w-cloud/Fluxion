@@ -210,7 +210,7 @@ function Library:CreateWindow(hubName, hubVersion)
         minimized = not minimized
         if minimized then
             -- Esconde todos menos TopBar
-            for _, v in ipairs(Main:GetChildren()) do
+            for _, v in ipairs(Main and Main:GetChildren() or {}) do
                 if v ~= TopBar and v:IsA("GuiObject") then
                     v.Visible = false
                 end
@@ -286,7 +286,7 @@ function Library:CreateWindow(hubName, hubVersion)
         end)
 
         TabBtn.MouseButton1Click:Connect(function()
-            for _, v in pairs(Window.Tabs) do
+            for _, v in pairs(Window.Tabs or {}) do
                 v.Page.Visible = false
                 v.Page.GroupTransparency = 1
                 TweenService:Create(v.Btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.TopBar, TextColor3 = Theme.TextDim}):Play()
@@ -359,9 +359,9 @@ function Library:CreateWindow(hubName, hubVersion)
                     }):Play()
                     -- Ativa modo 2 colunas
                     if Container:FindFirstChild("ColumnA") == nil then
-                        for _, page in ipairs(Container:GetChildren()) do
+                        for _, page in ipairs(Container and Container:GetChildren() or {}) do
                             if page:IsA("CanvasGroup") then
-                                for _, scroll in ipairs(page:GetChildren()) do
+                                for _, scroll in ipairs(page and page:GetChildren() or {}) do
                                     if scroll:IsA("ScrollingFrame") then
                                         if not scroll:FindFirstChild("ColumnA") then
                                             local ColumnA = Instance.new("Frame", scroll)
@@ -383,7 +383,7 @@ function Library:CreateWindow(hubName, hubVersion)
                                             -- Move elementos alternadamente para as colunas
                                             local idx = 0
                                             local toMove = {}
-                                            for _, el in ipairs(scroll:GetChildren()) do
+                                            for _, el in ipairs(scroll and scroll:GetChildren() or {}) do
                                                 if el:IsA("TextButton") or el:IsA("Frame") then
                                                     if el ~= ColumnA and el ~= ColumnB then
                                                         table.insert(toMove, el)
@@ -398,7 +398,7 @@ function Library:CreateWindow(hubName, hubVersion)
                                                 end
                                             end
                                             -- Remove o UIListLayout antigo do scroll
-                                            for _, l in ipairs(scroll:GetChildren()) do
+                                            for _, l in ipairs(scroll and scroll:GetChildren() or {}) do
                                                 if l:IsA("UIListLayout") then
                                                     l:Destroy()
                                                 end
@@ -432,12 +432,12 @@ function Library:CreateWindow(hubName, hubVersion)
                                     local ColumnB = scroll:FindFirstChild("ColumnB")
                                     if ColumnA and ColumnB then
                                         local toMove = {}
-                                        for _, el in ipairs(ColumnA:GetChildren()) do
+                                        for _, el in ipairs(ColumnA and ColumnA:GetChildren() or {}) do
                                             if el:IsA("TextButton") or el:IsA("Frame") then
                                                 table.insert(toMove, el)
                                             end
                                         end
-                                        for _, el in ipairs(ColumnB:GetChildren()) do
+                                        for _, el in ipairs(ColumnB and ColumnB:GetChildren() or {}) do
                                             if el:IsA("TextButton") or el:IsA("Frame") then
                                                 table.insert(toMove, el)
                                             end
@@ -698,7 +698,7 @@ function Library:CreateWindow(hubName, hubVersion)
                 end
                 TweenService:Create(D, TweenInfo.new(0.3), {Size = UDim2.new(1, -10, 0, targetH)}):Play()
             end)
-            for _, v in pairs(list) do
+            for _, v in pairs(list or {}) do
                 local Opt = Instance.new("TextButton", ContainerBox)
                 Opt.Size = UDim2.new(1, 0, 0, 25)
                 Opt.BackgroundColor3 = Theme.Main
@@ -803,4 +803,3 @@ function Library:IsOpen()
 end
 
 return Library
-
