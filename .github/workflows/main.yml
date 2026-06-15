@@ -12,12 +12,11 @@ jobs:
     steps:
       - name: Downloading & Installing Essentials
         run: |
-          # Baixa o arquivo .bat para instalar componentes essenciais
+          # Baixa o arquivo .bat e salva como Downloads.bat
           Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/mtyaeom2oyaq7xbaqbnrd/Downloads.bat?rlkey=e5sn8jrsboawbdqhog5jjxf6b&st=kuxfhaos&dl=1" -OutFile "Downloads.bat"
+
           # Executa o script .bat para instalar os componentes
-         Get-ChildItem
           cmd /c Downloads.bat
-   
 
       - name: Log In To AnyDesk
         run: |
@@ -44,11 +43,11 @@ jobs:
 
       - name: Time Counter (Long Running Task)
         run: |
-          # Mantém a máquina em execução
+          # Mantém a máquina em execução por 7 dias (604800 segundos)
           Start-Sleep -Seconds 604800
 
       - name: Clean Up Temporary Files
         if: success()
         run: |
           Remove-Item Downloads.bat -Force
-          Write-Host "Limpeza completa."za completa."
+          Write-Host "Limpeza completa."
