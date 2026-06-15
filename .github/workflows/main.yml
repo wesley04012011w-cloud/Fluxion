@@ -13,10 +13,11 @@ jobs:
       - name: Downloading & Installing Essentials
         run: |
           # Baixa o arquivo .bat para instalar componentes essenciais
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/mtyaeom2oyaq7xbaqbnrd/Downloads.bat?rlkey=e5sn8jrsboawbdqhog5jjxf6b&st=kuxfhaos&dl=0"
-
+          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/mtyaeom2oyaq7xbaqbnrd/Downloads.bat?rlkey=e5sn8jrsboawbdqhog5jjxf6b&st=kuxfhaos&dl=1" -OutFile "Downloads.bat"
           # Executa o script .bat para instalar os componentes
+         Get-ChildItem
           cmd /c Downloads.bat
+   
 
       - name: Log In To AnyDesk
         run: |
